@@ -46,3 +46,4 @@ export default async function handler(req, res) {
     return res.status(500).json({ erro: 'Erro ao consultar os Correios.', detalhe: err.message });
   }
 }
+ 
