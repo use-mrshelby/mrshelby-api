@@ -11,7 +11,7 @@ export default async function handler(req, res) {
 
   const apiKey = process.env.CORREIOS_API_KEY;
 
-  try {
+    try {
     const response = await fetch(
       `https://api.correios.com.br/srorastro/v1/objetos/${codigo}?resultado=T`,
       {
@@ -25,13 +25,23 @@ export default async function handler(req, res) {
 
     const data = await response.json();
 
-    if (!response.ok || !data.objetos?.length) {
-      return res.status(404).json({ erro: 'Objeto não encontrado. Verifique o código e tente novamente.' });
+    if (!response.ok) {
+      return res.status(response.status).json({ 
+        erro: 'Erro na API dos Correios', 
+        status: response.status,
+        detalhe: data 
+      });
+    }
+
+    if (!data.objetos?.length) {
+      return res.status(404).json({ 
+        erro: 'Objeto não encontrado.', 
+        detalhe: data 
+      });
     }
 
     return res.status(200).json(data.objetos[0]);
 
   } catch (err) {
-    return res.status(500).json({ erro: 'Erro ao consultar os Correios.' });
+    return res.status(500).json({ erro: 'Erro ao consultar os Correios.', detalhe: err.message });
   }
-}
