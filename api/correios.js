@@ -9,48 +9,27 @@ export default async function handler(req, res) {
   const { codigo } = req.body;
   if (!codigo) return res.status(400).json({ erro: 'Código não informado' });
 
-  const usuario   = process.env.CORREIOS_USUARIO;
-  const senha     = process.env.CORREIOS_SENHA;
-  const contrato  = process.env.CORREIOS_CONTRATO;
-  const codAdmin  = process.env.CORREIOS_COD_ADMIN;
+  const apiKey = process.env.CORREIOS_API_KEY;
 
   try {
-    // 1. Autenticar e obter token
-    const authResponse = await fetch('https://api.correios.com.br/token/v1/autentica/cartaopostagem', {
-      method: 'POST',
-      headers: {
-        'Authorization': 'Basic ' + Buffer.from(usuario + ':' + senha).toString('base64'),
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ numero: contrato })
-    });
-
-    if (!authResponse.ok) {
-      return res.status(401).json({ erro: 'Falha na autenticação com os Correios.' });
-    }
-
-    const authData = await authResponse.json();
-    const token = authData.token;
-
-    // 2. Consultar rastreio
-    const rastreioResponse = await fetch(
+    const response = await fetch(
       `https://api.correios.com.br/srorastro/v1/objetos/${codigo}?resultado=T`,
       {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `Bearer ${apiKey}`,
           'Accept': 'application/json'
         }
       }
     );
 
-    const rastreioData = await rastreioResponse.json();
+    const data = await response.json();
 
-    if (!rastreioResponse.ok || !rastreioData.objetos?.length) {
+    if (!response.ok || !data.objetos?.length) {
       return res.status(404).json({ erro: 'Objeto não encontrado. Verifique o código e tente novamente.' });
     }
 
-    return res.status(200).json(rastreioData.objetos[0]);
+    return res.status(200).json(data.objetos[0]);
 
   } catch (err) {
     return res.status(500).json({ erro: 'Erro ao consultar os Correios.' });
