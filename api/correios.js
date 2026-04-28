@@ -44,9 +44,10 @@ export default async function handler(req, res) {
       {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${authData.token}`,
-          'Accept': 'application/json'
-        }
+  'Authorization': `Bearer ${authData.token}`,
+  'Accept': 'application/json',
+  'Accept-Language': 'pt-BR'
+}
       }
     );
 
