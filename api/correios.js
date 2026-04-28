@@ -11,7 +11,7 @@ export default async function handler(req, res) {
 
   const apiKey = process.env.CORREIOS_API_KEY;
 
-    try {
+  try {
     const response = await fetch(
       `https://api.correios.com.br/srorastro/v1/objetos/${codigo}?resultado=T`,
       {
@@ -45,3 +45,4 @@ export default async function handler(req, res) {
   } catch (err) {
     return res.status(500).json({ erro: 'Erro ao consultar os Correios.', detalhe: err.message });
   }
+}
