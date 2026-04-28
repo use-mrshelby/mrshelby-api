@@ -19,10 +19,14 @@ export default async function handler(req, res) {
       headers: {
         'Authorization': 'Basic ' + Buffer.from(usuario + ':' + senha).toString('base64'),
         'Content-Type': 'application/json'
-      }
+      },
+      body: JSON.stringify({})
     });
 
-    const authData = await authResponse.json();
+    const authText = await authResponse.text();
+    let authData;
+    try { authData = JSON.parse(authText); } 
+    catch(e) { return res.status(500).json({ erro: 'Resposta inválida dos Correios', detalhe: authText }); }
 
     if (!authResponse.ok || !authData.token) {
       return res.status(401).json({ erro: 'Falha na autenticação.', detalhe: authData });
