@@ -9,41 +9,48 @@ export default async function handler(req, res) {
   const { codigo } = req.body;
   if (!codigo) return res.status(400).json({ erro: 'Código não informado' });
 
-  const apiKey = process.env.CORREIOS_API_KEY;
+  const usuario = process.env.CORREIOS_USUARIO;
+  const senha = process.env.CORREIOS_SENHA;
 
   try {
-    const response = await fetch(
+    // 1. Gerar token
+    const authResponse = await fetch('https://api.correios.com.br/token/v1/autentica', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Basic ' + Buffer.from(usuario + ':' + senha).toString('base64'),
+        'Content-Type': 'application/json'
+      }
+    });
+
+    const authData = await authResponse.json();
+
+    if (!authResponse.ok || !authData.token) {
+      return res.status(401).json({ erro: 'Falha na autenticação.', detalhe: authData });
+    }
+
+    const token = authData.token;
+
+    // 2. Consultar rastreio
+    const rastreioResponse = await fetch(
       `https://api.correios.com.br/srorastro/v1/objetos/${codigo}?resultado=T`,
       {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${apiKey}`,
+          'Authorization': `Bearer ${token}`,
           'Accept': 'application/json'
         }
       }
     );
 
-    const data = await response.json();
+    const data = await rastreioResponse.json();
 
-    if (!response.ok) {
-      return res.status(response.status).json({ 
-        erro: 'Erro na API dos Correios', 
-        status: response.status,
-        detalhe: data 
-      });
-    }
-
-    if (!data.objetos?.length) {
-      return res.status(404).json({ 
-        erro: 'Objeto não encontrado.', 
-        detalhe: data 
-      });
+    if (!rastreioResponse.ok || !data.objetos?.length) {
+      return res.status(404).json({ erro: 'Objeto não encontrado.', detalhe: data });
     }
 
     return res.status(200).json(data.objetos[0]);
 
   } catch (err) {
-    return res.status(500).json({ erro: 'Erro ao consultar os Correios.', detalhe: err.message });
+    return res.status(500).json({ erro: 'Erro interno.', detalhe: err.message });
   }
 }
- 
