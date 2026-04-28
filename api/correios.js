@@ -14,13 +14,14 @@ export default async function handler(req, res) {
 
   try {
     // 1. Gerar token
-    const authResponse = await fetch('https://api.correios.com.br/token/v1/autentica', {
+    const authResponse = await fetch'https://api.correios.com.br/token/v1/autentica/cartaopostagem'
+, {
       method: 'POST',
       headers: {
         'Authorization': 'Basic ' + Buffer.from(usuario + ':' + senha).toString('base64'),
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({})
+      body: JSON.stringify({ numero: "0076414787" })
     });
 
     const authText = await authResponse.text();
