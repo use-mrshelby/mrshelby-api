@@ -41,6 +41,11 @@ export default async function handler(req, res) {
     }
 
     if (!resultado?.tracking) {
+      data = await consultar('nf');
+      resultado = data?.consulta?.[0];
+    }
+
+    if (!resultado?.tracking) {
       return res.status(404).json({ erro: 'Pedido não encontrado. Verifique o código e tente novamente.' });
     }
 
