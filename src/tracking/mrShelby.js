@@ -23,7 +23,7 @@ function getCarrier(trackingNumber) {
 // ── Correios ──────────────────────────────────────────────────────────────────
 async function getCorreiosStatus(trackingNumber) {
   const response = await axios.post(
-    `${API_BASE}/API/correios`,
+    `${API_BASE}/api/correios`,
     { codigo: trackingNumber },
     { timeout: 15000 }
   );
@@ -35,7 +35,7 @@ async function getCorreiosStatus(trackingNumber) {
 // ── Jadlog ────────────────────────────────────────────────────────────────────
 async function getJadlogStatus(trackingNumber) {
   const response = await axios.post(
-    `${API_BASE}/API/jadlog`,
+    `${API_BASE}/api/jadlog`,
     { codigo: trackingNumber },
     { timeout: 15000 }
   );
