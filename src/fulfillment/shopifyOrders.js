@@ -23,12 +23,10 @@ async function findFulfillmentByTracking(trackingNumber) {
 
   do {
     page++;
-    const params = {
-      status: "any",
-      fulfillment_status: "shipped",
-      limit: PAGE_LIMIT,
-    };
-    if (pageInfo) params.page_info = pageInfo;
+    // When page_info is present, Shopify forbids mixing other filter params
+    const params = pageInfo
+      ? { page_info: pageInfo, limit: PAGE_LIMIT }
+      : { status: "any", fulfillment_status: "shipped", limit: PAGE_LIMIT };
 
     const response = await shopify.get("/orders.json", params);
     const orders = response.data.orders ?? [];
