@@ -50,13 +50,10 @@ async function getActiveTrackingsFromShopify() {
   let pageInfo = null;
 
   do {
-    const params = {
-      status: "any",
-      fulfillment_status: "shipped",
-      limit: 50,
-      fields: "id,fulfillments",
-    };
-    if (pageInfo) params.page_info = pageInfo;
+    // Quando page_info está presente não pode misturar outros filtros (regra Shopify)
+    const params = pageInfo
+      ? { page_info: pageInfo, limit: 50 }
+      : { status: "any", fulfillment_status: "any", limit: 50 };
 
     const response = await shopify.get("/orders.json", params);
     const orders = response.data.orders ?? [];
