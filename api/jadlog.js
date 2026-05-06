@@ -11,7 +11,8 @@ export default async function handler(req, res) {
 
   const token = process.env.JADLOG_TOKEN;
 
-  async function consultar(campo) {
+  // Tenta cada campo da API Embarcador até encontrar resultado
+  async function consultarEmbarcador(campo) {
     const response = await fetch(
       'https://prd-traffic.jadlogtech.com.br/embarcador/api/tracking/consultar',
       {
@@ -26,26 +27,49 @@ export default async function handler(req, res) {
     return response.json();
   }
 
+  // Fallback: API pública de rastreio da Jadlog (aceita etiqueta/remessa)
+  async function consultarPublico() {
+    const response = await fetch(
+      `https://tracking.jadlog.com.br/tracking/package/${encodeURIComponent(codigo)}`,
+      {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' }
+      }
+    );
+    if (!response.ok) return null;
+    return response.json();
+  }
+
   try {
-    let data = await consultar('codigo');
-    let resultado = data?.consulta?.[0];
+    // 1. Tenta campos da API Embarcador (mais rica em informações)
+    const campos = ['codigo', 'shipmentId', 'cte', 'nf', 'volume'];
+    let resultado = null;
 
-    if (!resultado?.tracking) {
-      data = await consultar('shipmentId');
-      resultado = data?.consulta?.[0];
+    for (const campo of campos) {
+      const data = await consultarEmbarcador(campo);
+      const r = data?.consulta?.[0];
+      if (r?.tracking) {
+        resultado = r;
+        break;
+      }
     }
 
-    if (!resultado?.tracking) {
-      data = await consultar('cte');
-      resultado = data?.consulta?.[0];
+    // 2. Fallback: API pública (funciona com etiqueta e remessa)
+    if (!resultado) {
+      const publico = await consultarPublico().catch(() => null);
+      if (publico?.tracking || publico?.status) {
+        // Normaliza para o mesmo formato do Embarcador
+        return res.status(200).json({
+          tracking: {
+            status: publico?.status ?? publico?.tracking?.status ?? null,
+            situacao: publico?.situacao ?? null,
+            descricao: publico?.descricao ?? publico?.tracking?.descricao ?? null,
+          }
+        });
+      }
     }
 
-    if (!resultado?.tracking) {
-      data = await consultar('nf');
-      resultado = data?.consulta?.[0];
-    }
-
-    if (!resultado?.tracking) {
+    if (!resultado) {
       return res.status(404).json({ erro: 'Pedido não encontrado. Verifique o código e tente novamente.' });
     }
 
