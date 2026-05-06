@@ -1,38 +1,120 @@
 /**
- * Mr. Shelby tracking API integration.
+ * Mr. Shelby tracking integration.
  *
- * getActiveTrackings() returns all active trackings with their current status.
- * Return shape: [{ tracking_number: string, status: string }]
- *
- * TODO: replace the mock below with the real Mr. Shelby API call once
- * the endpoint and auth scheme are confirmed with the team.
+ * Busca os tracking numbers dos pedidos enviados na Shopify,
+ * consulta os status reais nas APIs de Correios e Jadlog (Vercel)
+ * e retorna: [{ tracking_number: string, status: string }]
  */
 
 require("dotenv").config();
 const axios = require("axios");
+const shopify = require("../shopify/client");
 const logger = require("../logger");
 
-const API_URL = process.env.MR_SHELBY_API_URL;
-const API_KEY = process.env.MR_SHELBY_API_KEY;
+const API_BASE = (process.env.MR_SHELBY_API_URL || "https://mrshelby-api.vercel.app").replace(/\/$/, "");
 
+// Correios: formato AA123456789BR  |  Jadlog: qualquer outro formato
+const CORREIOS_REGEX = /^[A-Z]{2}\d{9}[A-Z]{2}$/i;
+
+function getCarrier(trackingNumber) {
+  return CORREIOS_REGEX.test(trackingNumber.trim()) ? "correios" : "jadlog";
+}
+
+// ── Correios ──────────────────────────────────────────────────────────────────
+async function getCorreiosStatus(trackingNumber) {
+  const response = await axios.post(
+    `${API_BASE}/API/correios`,
+    { codigo: trackingNumber },
+    { timeout: 15000 }
+  );
+  const eventos = response.data?.eventos;
+  if (!eventos?.length) return null;
+  return eventos[0].descricao ?? null;
+}
+
+// ── Jadlog ────────────────────────────────────────────────────────────────────
+async function getJadlogStatus(trackingNumber) {
+  const response = await axios.post(
+    `${API_BASE}/API/jadlog`,
+    { codigo: trackingNumber },
+    { timeout: 15000 }
+  );
+  const tracking = response.data?.tracking;
+  if (!tracking) return null;
+  return tracking.status ?? tracking.situacao ?? tracking.descricao ?? null;
+}
+
+// ── Busca tracking numbers dos pedidos enviados na Shopify ────────────────────
+async function getActiveTrackingsFromShopify() {
+  const trackings = new Set();
+  let pageInfo = null;
+
+  do {
+    const params = {
+      status: "any",
+      fulfillment_status: "shipped",
+      limit: 50,
+      fields: "id,fulfillments",
+    };
+    if (pageInfo) params.page_info = pageInfo;
+
+    const response = await shopify.get("/orders.json", params);
+    const orders = response.data.orders ?? [];
+    const linkHeader = response.headers["link"] ?? "";
+
+    for (const order of orders) {
+      for (const fulfillment of order.fulfillments ?? []) {
+        if (fulfillment.tracking_number) {
+          trackings.add(fulfillment.tracking_number.trim());
+        }
+      }
+    }
+
+    const nextMatch = linkHeader.match(/<[^>]*[?&]page_info=([^&>]+)[^>]*>;\s*rel="next"/);
+    pageInfo = nextMatch ? nextMatch[1] : null;
+  } while (pageInfo);
+
+  return [...trackings];
+}
+
+// ── Entry point ───────────────────────────────────────────────────────────────
 async function getActiveTrackings() {
-  // ── Real implementation (plug in here) ───────────────────────────────────
-  // TODO: uncomment and adjust when the Mr. Shelby endpoint is available.
-  //
-  // const response = await axios.get(`${API_URL}/trackings/active`, {
-  //   headers: { Authorization: `Bearer ${API_KEY}` },
-  // });
-  // return response.data; // expected: [{ tracking_number, status }]
-  // ─────────────────────────────────────────────────────────────────────────
+  let trackingNumbers;
 
-  // ── Mock (remove after plugging real API) ─────────────────────────────────
-  logger.warn("mrShelby: using mock data — real API not connected yet");
-  return [
-    { tracking_number: "AA123456789BR", status: "Em trânsito" },
-    { tracking_number: "BB987654321BR", status: "Saiu para entrega" },
-    { tracking_number: "CC112233445BR", status: "Entregue" },
-  ];
-  // ─────────────────────────────────────────────────────────────────────────
+  try {
+    trackingNumbers = await getActiveTrackingsFromShopify();
+    logger.info(`mrShelby: ${trackingNumbers.length} tracking(s) ativos encontrados na Shopify`);
+  } catch (err) {
+    logger.error("mrShelby: falha ao buscar trackings da Shopify", { error: err.message });
+    return [];
+  }
+
+  const results = [];
+
+  for (const trackingNumber of trackingNumbers) {
+    const carrier = getCarrier(trackingNumber);
+    try {
+      const rawStatus = carrier === "correios"
+        ? await getCorreiosStatus(trackingNumber)
+        : await getJadlogStatus(trackingNumber);
+
+      if (rawStatus) {
+        results.push({ tracking_number: trackingNumber, status: rawStatus });
+        logger.info("mrShelby: status obtido", { trackingNumber, carrier, rawStatus });
+      } else {
+        logger.warn("mrShelby: resposta sem status", { trackingNumber, carrier });
+      }
+    } catch (err) {
+      logger.warn("mrShelby: falha ao consultar transportadora", {
+        trackingNumber,
+        carrier,
+        error: err.message,
+        httpStatus: err.response?.status,
+      });
+    }
+  }
+
+  return results;
 }
 
 module.exports = { getActiveTrackings };
