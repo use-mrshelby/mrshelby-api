@@ -52,7 +52,7 @@ async function getActiveTrackingsFromShopify() {
   do {
     // Quando page_info está presente não pode misturar outros filtros (regra Shopify)
     // Filtra apenas pedidos dos últimos 60 dias para evitar rastreios expirados
-    const since = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
+    const since = new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString();
     const params = pageInfo
       ? { page_info: pageInfo, limit: 50 }
       : { status: "any", fulfillment_status: "shipped", updated_at_min: since, limit: 50 };
