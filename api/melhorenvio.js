@@ -97,6 +97,61 @@ async function findOrderByCode(token, codigo) {
   return null;
 }
 
+// Enriquecimento: quando o pedido já tem código da transportadora (postado),
+// puxa a esteira COMPLETA reaproveitando os endpoints /api/correios e /api/jadlog.
+// Enquanto não tem código (ex.: status "released"), retorna null e caímos nos marcos.
+async function enrichFromCarrier(order) {
+  if (!order) return null;
+  const company = (order?.service?.company?.name || "").toLowerCase();
+  const carrierCode = order?.tracking || null;
+  const jadlogId = order?.additional_info?.shipmentId || null;
+  const API = (process.env.MR_SHELBY_API_URL || "https://mrshelby-api.vercel.app").replace(/\/$/, "");
+  const isCorreiosCode = carrierCode && /^[A-Z]{2}\d{9}[A-Z]{2}$/i.test(carrierCode);
+
+  try {
+    if (/correios/.test(company) || isCorreiosCode) {
+      if (!carrierCode) return null;
+      const r = await fetch(`${API}/api/correios`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ codigo: carrierCode }),
+      });
+      const d = await r.json().catch(() => null);
+      if (r.ok && Array.isArray(d?.eventos) && d.eventos.length) {
+        return { eventos: d.eventos, dtPrevista: d.dtPrevista || null, fonte: "correios" };
+      }
+      return null;
+    }
+    if (/jadlog/.test(company)) {
+      const code = carrierCode || jadlogId;
+      if (!code) return null;
+      const r = await fetch(`${API}/api/jadlog`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ codigo: code }),
+      });
+      const d = await r.json().catch(() => null);
+      const evs = d?.tracking?.eventos;
+      if (r.ok && Array.isArray(evs) && evs.length) {
+        return {
+          eventos: evs.map((ev) => ({
+            codigo: "",
+            descricao: ev.status || ev.descricao || "",
+            dtHrCriado: ev.data || ev.dtHrCriado || "",
+            unidade: { endereco: { cidade: ev.unidade || "", uf: "" } },
+          })),
+          dtPrevista: d.previsaoEntrega || null,
+          fonte: "jadlog",
+        };
+      }
+      return null;
+    }
+  } catch (e) {
+    return null;
+  }
+  return null;
+}
+
 // A resposta de tracking vem como objeto keyed por id/código. Pega a entrada certa.
 function pickEntry(data, key) {
   if (!data || typeof data !== "object") return null;
@@ -108,7 +163,8 @@ function pickEntry(data, key) {
 // Normaliza para o MESMO formato que a página já sabe desenhar (estilo Correios):
 //   { eventos: [{ codigo, descricao, dtHrCriado, unidade:{endereco:{cidade,uf}} }], dtPrevista }
 function normalize(entry, order, codigo) {
-  const out = { codigo, transportadora: "Melhor Envio", eventos: [], dtPrevista: null };
+  const empresa = order?.service?.company?.name ? " · " + order.service.company.name : "";
+  const out = { codigo, transportadora: "Melhor Envio" + empresa, eventos: [], dtPrevista: null };
   if (!entry && !order) return out;
 
   const src = entry || {};
@@ -248,6 +304,20 @@ export default async function handler(req, res) {
       return res
         .status(404)
         .json({ erro: "Pedido não encontrado no Melhor Envio.", ...(debug ? { _debug: dbg } : {}) });
+    }
+
+    // Se o pedido já tem código da transportadora (postado), usa a esteira completa.
+    const enr = await enrichFromCarrier(order);
+    if (enr && enr.eventos.length) {
+      const outE = {
+        codigo,
+        transportadora: `Melhor Envio${order?.service?.company?.name ? " · " + order.service.company.name : ""}`,
+        eventos: enr.eventos,
+        dtPrevista: enr.dtPrevista,
+        fonte: enr.fonte,
+      };
+      if (debug) outE._debug = dbg;
+      return res.status(200).json(outE);
     }
 
     const out = normalize(entry, order, codigo);
