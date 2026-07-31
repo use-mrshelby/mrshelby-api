@@ -48,12 +48,17 @@ async function getUnfulfilledOrders() {
   let pageInfo = null;
 
   do {
+    // status: "any" para INCLUIR pedidos arquivados (closed). A loja arquiva o
+    // pedido após emitir a NF, e o código do Correios LOG+ costuma chegar depois
+    // disso — com "open" a ponte não enxergava justamente esses. Cancelados são
+    // ignorados abaixo.
     const params = pageInfo
       ? { page_info: pageInfo, limit: 50 }
-      : { status: "open", financial_status: "paid", fulfillment_status: "unfulfilled", limit: 50 };
+      : { status: "any", financial_status: "paid", fulfillment_status: "unfulfilled", limit: 50 };
 
     const resp = await shopify.get("/orders.json", params);
     for (const o of resp.data.orders ?? []) {
+      if (o.cancelled_at) continue; // não mexe em pedidos cancelados
       orders.push({ id: String(o.id), name: o.name });
     }
     pageInfo = extractNextPageInfo(resp.headers["link"]);
