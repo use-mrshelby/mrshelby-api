@@ -78,21 +78,14 @@ async function processTracking(trackingNumber, rawStatus) {
   }
 
   // Skip if Shopify already has this status (checagem local, sem chamar a Shopify).
-  // Exceção: em status de não entrega, ainda conferimos se sobrou algum evento
-  // "delivered" antigo — ele mantém a página do pedido mostrando "Entregue".
+  // Exceção: enquanto a transportadora não disser "entregue", um evento
+  // "delivered" antigo mantém a página do pedido mostrando "Entregue" para o
+  // cliente. A limpeza roda uma vez por tracking (flag delivered_cleared).
   const record = getTracking(trackingNumber);
-  if (record?.last_status === shopifyStatus) {
-    if (NOT_DELIVERED_STATUSES.has(shopifyStatus) && record.shopify_order_id && record.shopify_fulfillment_id) {
-      try {
-        await removeDeliveredEvents(record.shopify_order_id, record.shopify_fulfillment_id, trackingNumber);
-      } catch (err) {
-        logger.warn("Falha ao limpar eventos delivered — tentaremos no próximo ciclo", {
-          trackingNumber,
-          error: err.message,
-          httpStatus: err.response?.status,
-        });
-      }
-    }
+  const unchanged = record?.last_status === shopifyStatus;
+  const precisaLimpar = shopifyStatus !== "delivered" && !record?.delivered_cleared;
+
+  if (unchanged && !precisaLimpar) {
     logger.info("Status unchanged — skipping Shopify call", { trackingNumber, shopifyStatus });
     return "unchanged";
   }
@@ -121,11 +114,17 @@ async function processTracking(trackingNumber, rawStatus) {
       }
     }
 
-    // Se a transportadora diz que NÃO houve entrega, qualquer evento "delivered"
-    // anterior está errado. A página do pedido do cliente continua mostrando
-    // "Entregue" enquanto ele existir, então é removido antes do evento novo.
-    if (NOT_DELIVERED_STATUSES.has(shopifyStatus)) {
+    // A transportadora não diz "entregue": qualquer evento "delivered" anterior
+    // está errado e é removido antes do evento novo.
+    if (precisaLimpar) {
       await removeDeliveredEvents(orderId, fulfillmentId, trackingNumber);
+    }
+
+    if (unchanged) {
+      // Só faltava a limpeza; o status em si já está na Shopify.
+      upsertTracking({ trackingNumber, lastStatus: shopifyStatus, orderId, fulfillmentId, deliveredCleared: true });
+      logger.info("Status unchanged — apenas limpeza aplicada", { trackingNumber, shopifyStatus });
+      return "unchanged";
     }
 
     // Create the FulfillmentEvent in Shopify
@@ -143,7 +142,13 @@ async function processTracking(trackingNumber, rawStatus) {
       fulfillmentId,
     });
 
-    upsertTracking({ trackingNumber, lastStatus: shopifyStatus, orderId, fulfillmentId });
+    upsertTracking({
+      trackingNumber,
+      lastStatus: shopifyStatus,
+      orderId,
+      fulfillmentId,
+      deliveredCleared: precisaLimpar || record?.delivered_cleared || false,
+    });
     return "updated";
   } catch (err) {
     const httpStatus = err.response?.status;

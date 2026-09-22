@@ -30,13 +30,15 @@ function getTracking(trackingNumber) {
   return data[trackingNumber] ?? null;
 }
 
-function upsertTracking({ trackingNumber, lastStatus, orderId, fulfillmentId }) {
+function upsertTracking({ trackingNumber, lastStatus, orderId, fulfillmentId, deliveredCleared }) {
   const data = _load();
   const existing = data[trackingNumber] ?? {};
   data[trackingNumber] = {
     last_status: lastStatus,
     shopify_order_id: orderId ?? existing.shopify_order_id ?? null,
     shopify_fulfillment_id: fulfillmentId ?? existing.shopify_fulfillment_id ?? null,
+    // true = já conferimos que não sobrou evento "delivered" errado neste envio
+    delivered_cleared: deliveredCleared ?? existing.delivered_cleared ?? false,
     updated_at: new Date().toISOString(),
   };
   _save(data);
