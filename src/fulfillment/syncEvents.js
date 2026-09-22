@@ -92,7 +92,8 @@ async function processTracking(trackingNumber, rawStatus) {
     // Create the FulfillmentEvent in Shopify
     await shopify.post(
       `/orders/${orderId}/fulfillments/${fulfillmentId}/events.json`,
-      { event: { status: shopifyStatus } }
+      // message: descrição original dos Correios, exibida ao cliente na página do pedido
+      { event: { status: shopifyStatus, message: rawStatus } }
     );
 
     logger.info("FulfillmentEvent created", {
