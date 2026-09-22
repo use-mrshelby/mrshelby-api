@@ -142,6 +142,10 @@ const shopify = {
   post(path, data) {
     return requestWithRetry({ method: "POST", url: `${BASE_URL}${path}`, data });
   },
+
+  delete(path) {
+    return requestWithRetry({ method: "DELETE", url: `${BASE_URL}${path}` });
+  },
 };
 
 module.exports = shopify;

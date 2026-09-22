@@ -19,6 +19,25 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+const NOT_DELIVERED_STATUSES = new Set(["attempted_delivery", "failure"]);
+
+async function removeDeliveredEvents(orderId, fulfillmentId, trackingNumber) {
+  const base = `/orders/${orderId}/fulfillments/${fulfillmentId}/events`;
+  const { data } = await shopify.get(`${base}.json`);
+  const delivered = (data.fulfillment_events ?? []).filter((ev) => ev.status === "delivered");
+
+  for (const ev of delivered) {
+    await shopify.delete(`${base}/${ev.id}.json`);
+    logger.info("Evento delivered incorreto removido", {
+      trackingNumber,
+      orderId,
+      fulfillmentId,
+      eventId: ev.id,
+      happenedAt: ev.happened_at,
+    });
+  }
+}
+
 async function syncFulfillmentEvents() {
   logger.info("syncFulfillmentEvents: starting run");
 
@@ -87,6 +106,13 @@ async function processTracking(trackingNumber, rawStatus) {
         });
         return "skip";
       }
+    }
+
+    // Se a transportadora diz que NÃO houve entrega, qualquer evento "delivered"
+    // anterior está errado. A página do pedido do cliente continua mostrando
+    // "Entregue" enquanto ele existir, então é removido antes do evento novo.
+    if (NOT_DELIVERED_STATUSES.has(shopifyStatus)) {
+      await removeDeliveredEvents(orderId, fulfillmentId, trackingNumber);
     }
 
     // Create the FulfillmentEvent in Shopify
