@@ -63,6 +63,9 @@ async function getActiveTrackingsFromShopify() {
 
     for (const order of orders) {
       for (const fulfillment of order.fulfillments ?? []) {
+        // Remessa já entregue não muda mais: não precisa consultar a
+        // transportadora nem a Shopify a cada ciclo.
+        if (fulfillment.shipment_status === "delivered") continue;
         if (fulfillment.tracking_number) {
           trackings.add(fulfillment.tracking_number.trim());
         }
