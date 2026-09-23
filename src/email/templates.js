@@ -36,22 +36,48 @@ function endereco(unidade) {
   return [l1, l2].filter(Boolean);
 }
 
-function layout({ titulo, corpo, codigo, botao }) {
-  return `<!doctype html><html lang="pt-BR"><body style="margin:0;padding:24px;background:#f4f4f4;font-family:Helvetica,Arial,sans-serif;color:#111;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;">
-    <tr><td style="padding:28px 28px 8px;text-align:center;">
-      <span style="font-size:22px;font-weight:800;letter-spacing:-0.02em;text-transform:uppercase;">MR. SHELBY</span>
-    </td></tr>
-    <tr><td style="padding:8px 28px 0;">
-      <h1 style="font-size:19px;line-height:1.3;margin:12px 0 16px;">${titulo}</h1>
-      ${corpo}
-    </td></tr>
-    <tr><td style="padding:8px 28px 28px;">
-      <a href="${botao.url}" style="display:inline-block;background:#111;color:#fff;text-decoration:none;padding:13px 22px;border-radius:50px;font-weight:600;font-size:15px;">${botao.texto}</a>
-      <p style="font-size:12px;color:#999;margin:18px 0 0;">Código de rastreio: ${esc(codigo)}</p>
-    </td></tr>
+// Assunto no mesmo padrão das notificações da Shopify:
+// "Mr. Shelby: Seu pedido #MS15047 está aguardando retirada"
+function assuntoPadrao(pedido, situacao) {
+  const numero = String(pedido || "").replace(/^#/, "");
+  return `Mr. Shelby: Seu pedido ${numero ? `#${numero} ` : ""}${situacao}`;
+}
+
+function layout({ titulo, corpo, codigo, botao, pedido, saudacao }) {
+  // Mesmo padrão visual das notificações da Shopify: fundo branco, largura de
+  // 560px com 448px de conteúdo, fonte do sistema, cabeçalho com o nome da
+  // loja em 30px, título em 24px e botão preto de cantos 4px.
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+  <body style="margin:0;padding:0;background:#fff;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fff;">
+   <tr><td align="center" style="padding:20px 0;">
+    <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="width:560px;max-width:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#333;">
+      <tr><td style="padding:24px 56px 8px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+          <td style="font-size:30px;line-height:1.2;color:#333;">Mr. Shelby</td>
+          <td align="right" style="font-size:14px;color:#999;text-transform:uppercase;">${pedido ? `Pedido #${esc(String(pedido).replace(/^#/, ""))}` : ""}</td>
+        </tr></table>
+      </td></tr>
+      <tr><td style="padding:0 56px;">
+        <h1 style="font-size:24px;font-weight:400;line-height:1.35;color:#000;margin:18px 0 14px;">${saudacao ? `<strong style="font-weight:700;">Olá, ${esc(saudacao)}!</strong> ` : ""}${titulo}</h1>
+        ${corpo}
+      </td></tr>
+      <tr><td style="padding:10px 56px 4px;">
+        <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+          <td style="background:#000;border-radius:4px;padding:14px 24px;">
+            <a href="${botao.url}" style="color:#fff;text-decoration:none;font-size:14px;font-weight:700;display:inline-block;">${botao.texto}</a>
+          </td>
+        </tr></table>
+      </td></tr>
+      <tr><td style="padding:16px 56px 8px;">
+        <p style="font-size:14px;color:#999;margin:0;">Número de rastreio: ${esc(codigo)}</p>
+      </td></tr>
+      <tr><td style="padding:8px 56px 28px;border-top:1px solid #e5e5e5;">
+        <p style="font-size:14px;color:#999;line-height:1.5;margin:14px 0 0;">Se você tiver alguma dúvida, responda a esta mensagem ou entre em contato conosco pelo e-mail <a href="mailto:contato@mrshelby.com.br" style="color:#999;">contato@mrshelby.com.br</a></p>
+      </td></tr>
+    </table>
+   </td></tr>
   </table>
-  <p style="text-align:center;font-size:12px;color:#999;margin:16px 0 0;">Mr. Shelby · Dúvidas? É só responder este e-mail.</p>
   </body></html>`;
 }
 
@@ -60,13 +86,13 @@ function aguardandoRetirada({ nome, pedido, codigo, evento }) {
   const linhas = endereco(evento && evento.unidade);
   const prazo = evento && evento.dtLimiteRetirada ? dataBr(evento.dtLimiteRetirada) : "";
   const corpo = `
-    <p style="font-size:15px;line-height:1.6;">Olá, ${esc(primeiroNome(nome))}! Seu pedido <strong>${esc(pedido)}</strong> chegou na agência dos Correios e está aguardando você retirar.</p>
-    ${prazo ? `<p style="font-size:15px;line-height:1.6;background:#fff8e1;border:1px solid #f5d77a;border-radius:8px;padding:12px 14px;"><strong>Retire até ${esc(prazo)}.</strong> Depois dessa data, o pedido volta para a Mr. Shelby.</p>` : ""}
-    ${linhas.length ? `<p style="font-size:15px;line-height:1.6;">📍 ${linhas.map(esc).join("<br>")}</p>` : ""}
-    <p style="font-size:14px;line-height:1.6;color:#555;">Leve o código de rastreio e um documento com foto do destinatário ou de alguém autorizado por ele.</p>`;
+    <p style="font-size:16px;line-height:1.6;color:#333;">Ele chegou na agência dos Correios e está aguardando você retirar.</p>
+    ${prazo ? `<p style="font-size:16px;line-height:1.6;color:#333;background:#fff8e1;border:1px solid #f5d77a;border-radius:8px;padding:12px 14px;"><strong>Retire até ${esc(prazo)}.</strong> Depois dessa data, o pedido volta para a Mr. Shelby.</p>` : ""}
+    ${linhas.length ? `<p style="font-size:16px;line-height:1.6;color:#333;">📍 ${linhas.map(esc).join("<br>")}</p>` : ""}
+    <p style="font-size:14px;line-height:1.6;color:#777;">Leve o código de rastreio e um documento com foto do destinatário ou de alguém autorizado por ele.</p>`;
   return {
-    assunto: "Seu pedido está te esperando na agência dos Correios 📦",
-    html: layout({ titulo: "Seu pedido chegou na agência", corpo, codigo, botao: { url: `${LINK_RASTREIO}?tracking=${encodeURIComponent(codigo)}`, texto: "Acompanhar meu pedido" } }),
+    assunto: assuntoPadrao(pedido, "está aguardando retirada nos Correios"),
+    html: layout({ titulo: "Seu pedido chegou na agência", saudacao: primeiroNome(nome), pedido, corpo, codigo, botao: { url: `${LINK_RASTREIO}?tracking=${encodeURIComponent(codigo)}`, texto: "Rastrear meu pedido" } }),
   };
 }
 
@@ -76,12 +102,12 @@ function prazoAcabando({ nome, pedido, codigo, evento, diasRestantes }) {
   const prazo = evento && evento.dtLimiteRetirada ? dataBr(evento.dtLimiteRetirada) : "";
   const quando = diasRestantes <= 1 ? "amanhã" : `em ${diasRestantes} dias`;
   const corpo = `
-    <p style="font-size:15px;line-height:1.6;">Olá, ${esc(primeiroNome(nome))}! Seu pedido <strong>${esc(pedido)}</strong> continua na agência dos Correios, e o prazo para retirada termina <strong>${esc(quando)}</strong>${prazo ? `, em ${esc(prazo)}` : ""}.</p>
-    <p style="font-size:15px;line-height:1.6;">Se não for retirado, ele volta para a Mr. Shelby e a entrega atrasa bastante.</p>
-    ${linhas.length ? `<p style="font-size:15px;line-height:1.6;">📍 ${linhas.map(esc).join("<br>")}</p>` : ""}`;
+    <p style="font-size:16px;line-height:1.6;color:#333;">Ele continua na agência dos Correios, e o prazo para retirada termina <strong>${esc(quando)}</strong>${prazo ? `, em ${esc(prazo)}` : ""}.</p>
+    <p style="font-size:16px;line-height:1.6;color:#333;">Se não for retirado, ele volta para a Mr. Shelby e a entrega atrasa bastante.</p>
+    ${linhas.length ? `<p style="font-size:16px;line-height:1.6;color:#333;">📍 ${linhas.map(esc).join("<br>")}</p>` : ""}`;
   return {
-    assunto: `Faltam poucos dias para retirar seu pedido ⏰`,
-    html: layout({ titulo: "O prazo de retirada está acabando", corpo, codigo, botao: { url: `${LINK_RASTREIO}?tracking=${encodeURIComponent(codigo)}`, texto: "Ver detalhes da retirada" } }),
+    assunto: assuntoPadrao(pedido, prazo ? `precisa ser retirado até ${prazo}` : "precisa ser retirado nos Correios"),
+    html: layout({ titulo: "O prazo de retirada está acabando", saudacao: primeiroNome(nome), pedido, corpo, codigo, botao: { url: `${LINK_RASTREIO}?tracking=${encodeURIComponent(codigo)}`, texto: "Rastrear meu pedido" } }),
   };
 }
 
@@ -89,23 +115,23 @@ function prazoAcabando({ nome, pedido, codigo, evento, diasRestantes }) {
 function tentativaEntrega({ nome, pedido, codigo, evento }) {
   const detalhe = evento && evento.detalhe ? esc(evento.detalhe) : "Os Correios farão uma nova tentativa nos próximos dias úteis.";
   const corpo = `
-    <p style="font-size:15px;line-height:1.6;">Olá, ${esc(primeiroNome(nome))}! O carteiro passou no seu endereço com o pedido <strong>${esc(pedido)}</strong>, mas não conseguiu entregar.</p>
-    <p style="font-size:15px;line-height:1.6;">${detalhe}</p>
-    <p style="font-size:14px;line-height:1.6;color:#555;">Se puder, deixe alguém no endereço para receber a encomenda.</p>`;
+    <p style="font-size:16px;line-height:1.6;color:#333;">O carteiro passou no seu endereço, mas não conseguiu entregar.</p>
+    <p style="font-size:16px;line-height:1.6;color:#333;">${detalhe}</p>
+    <p style="font-size:14px;line-height:1.6;color:#777;">Se puder, deixe alguém no endereço para receber a encomenda.</p>`;
   return {
-    assunto: "Tentamos entregar seu pedido hoje 🛵",
-    html: layout({ titulo: "Não conseguimos entregar seu pedido", corpo, codigo, botao: { url: `${LINK_RASTREIO}?tracking=${encodeURIComponent(codigo)}`, texto: "Acompanhar meu pedido" } }),
+    assunto: assuntoPadrao(pedido, "não pôde ser entregue hoje"),
+    html: layout({ titulo: "Tentamos entregar seu pedido", saudacao: primeiroNome(nome), pedido, corpo, codigo, botao: { url: `${LINK_RASTREIO}?tracking=${encodeURIComponent(codigo)}`, texto: "Rastrear meu pedido" } }),
   };
 }
 
 // ── 4. Pedido voltando para a loja ───────────────────────────────────────────
 function emDevolucao({ nome, pedido, codigo }) {
   const corpo = `
-    <p style="font-size:15px;line-height:1.6;">Olá, ${esc(primeiroNome(nome))}! O pedido <strong>${esc(pedido)}</strong> não pôde ser entregue e está voltando para a Mr. Shelby.</p>
-    <p style="font-size:15px;line-height:1.6;">Assim que ele chegar aqui, entramos em contato para combinar o reenvio. Se preferir, fale com a gente agora mesmo.</p>`;
+    <p style="font-size:16px;line-height:1.6;color:#333;">Ele não pôde ser entregue e está voltando para a Mr. Shelby.</p>
+    <p style="font-size:16px;line-height:1.6;color:#333;">Assim que ele chegar aqui, entramos em contato para combinar o reenvio. Se preferir, fale com a gente agora mesmo.</p>`;
   return {
-    assunto: "Seu pedido está voltando para a Mr. Shelby ↩️",
-    html: layout({ titulo: "Seu pedido está voltando para a gente", corpo, codigo, botao: { url: LINK_CONTATO, texto: "Falar com a Mr. Shelby" } }),
+    assunto: assuntoPadrao(pedido, "está voltando para a loja"),
+    html: layout({ titulo: "Seu pedido está voltando para a gente", saudacao: primeiroNome(nome), pedido, corpo, codigo, botao: { url: LINK_CONTATO, texto: "Falar com a Mr. Shelby" } }),
   };
 }
 
