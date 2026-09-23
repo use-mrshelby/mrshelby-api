@@ -40,8 +40,8 @@ function upsertTracking({ trackingNumber, lastStatus, orderId, fulfillmentId, de
     // true = já conferimos que não sobrou evento "delivered" errado neste envio
     delivered_cleared: deliveredCleared ?? existing.delivered_cleared ?? false,
     // { retirada: "2026-09-23T...", prazo_final: ..., tentativa: ..., devolucao: ... }
-    // Cada aviso sai uma vez só por remessa.
-    avisos_enviados: { ...(existing.avisos_enviados ?? {}), ...(avisosEnviados ?? {}) },
+    // Cada aviso sai uma vez só por remessa. avisosEnviados: null zera tudo.
+    avisos_enviados: avisosEnviados === null ? {} : { ...(existing.avisos_enviados ?? {}), ...(avisosEnviados ?? {}) },
     updated_at: new Date().toISOString(),
   };
   _save(data);
