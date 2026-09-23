@@ -19,6 +19,9 @@ function tipoDoAviso(rawStatus, evento) {
   const t = String(rawStatus || "").toLowerCase();
   if (/entregue ao remetente|devolvido ao remetente|prazo de retirada encerrado/.test(t)) return "devolucao";
   if (/aguardando retirada|disponivel para retirada|disponível para retirada/.test(t)) return "retirada";
+  // Jadlog: endereço não localizado / erro de endereço — o cliente precisa
+  // confirmar o endereço com a loja, senão o pedido não avança.
+  if (/endereco nao localizado|endereço não localizado|erro de endereco|erro de endereço|reitineracao|reitineração/.test(t)) return "endereco";
   if (/nao entregue|não entregue|carteiro nao atendido|carteiro não atendido|ausente/.test(t)) return "tentativa";
   return null;
 }
@@ -61,6 +64,7 @@ async function enviarAviso({ tipo, contato, pedido, codigo, evento }) {
     retirada: templates.aguardandoRetirada,
     prazo_final: templates.prazoAcabando,
     tentativa: templates.tentativaEntrega,
+    endereco: templates.enderecoNaoLocalizado,
     devolucao: templates.emDevolucao,
   }[tipo];
 

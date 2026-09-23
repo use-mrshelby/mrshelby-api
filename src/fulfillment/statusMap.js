@@ -11,22 +11,29 @@
 // vêm antes de "entregue", porque os Correios escrevem "Objeto não entregue - ..."
 // e "Objeto entregue ao remetente" (devolução), que contêm a palavra "entregue".
 const STATUS_RULES = [
-  // ── Devolução para a loja ─────────────────────────────────────────────────────
+  // ── Devolução para a loja / parada definitiva ────────────────────────────────
+  // Jadlog: "TRAVADO" é o objeto retido, sem seguir viagem.
   {
     keywords: [
       "remetente", "devolvido", "devolucao", "prazo de retirada encerrado",
-      "endereco incorreto", "recusado", "trafego interrompido",
+      "endereco incorreto", "recusado", "trafego interrompido", "travado",
+      "extraviado", "avariado", "sinistro",
     ],
     shopify: "failure",
   },
   // ── Tentativa de entrega sem sucesso ──────────────────────────────────────────
+  // Jadlog: "ENDERECO NAO LOCALIZADO", "REITINERACAO - ERRO DE ENDERECO".
   {
-    keywords: ["nao entregue", "carteiro nao atendido", "tentativa", "ausente", "nao encontrado"],
+    keywords: [
+      "nao entregue", "carteiro nao atendido", "tentativa", "ausente", "nao encontrado",
+      "endereco nao localizado", "erro de endereco", "reitineracao",
+    ],
     shopify: "attempted_delivery",
   },
   // ── Saiu para entrega ─────────────────────────────────────────────────────────
+  // Na Jadlog, "EM ROTA" é o objeto na rua para entrega no dia.
   {
-    keywords: ["saiu para entrega", "saida para entrega", "em entrega", "out for delivery"],
+    keywords: ["saiu para entrega", "saida para entrega", "em entrega", "em rota", "out for delivery"],
     shopify: "out_for_delivery",
   },
   // ── Entregue ──────────────────────────────────────────────────────────────────
@@ -45,11 +52,14 @@ const STATUS_RULES = [
     shopify: "label_purchased",
   },
   // ── Em trânsito / Transferência ───────────────────────────────────────────────
+  // Inclui as paradas da Jadlog que não exigem ação do cliente: retenção
+  // fiscal, posto fiscal, atraso e "não entrou na unidade".
   {
     keywords: [
       "transito", "transferencia", "transferido", "triagem",
-      "encaminhado", "em rota", "correcao de rota", "entrada", "em tratamento",
-      "aguardando tratamento", "recebido", "fiscalizacao",
+      "encaminhado", "correcao de rota", "entrada", "em tratamento",
+      "aguardando tratamento", "recebido", "fiscalizacao", "fiscal",
+      "atraso", "nao entrou na unidade", "aguardando embarque", "embarcado",
     ],
     shopify: "in_transit",
   },

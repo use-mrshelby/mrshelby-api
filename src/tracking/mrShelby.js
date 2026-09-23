@@ -13,11 +13,15 @@ const logger = require("../logger");
 
 const API_BASE = (process.env.MR_SHELBY_API_URL || "https://mrshelby-api.vercel.app").replace(/\/$/, "");
 
-// Correios: formato AA123456789BR  |  Jadlog: qualquer outro formato
+// Correios: AA123456789BR | Melhor Envio: começa com ME | Jadlog: o resto
 const CORREIOS_REGEX = /^[A-Z]{2}\d{9}[A-Z]{2}$/i;
+const MELHOR_ENVIO_REGEX = /^ME[0-9A-Z]{6,}$/i;
 
 function getCarrier(trackingNumber) {
-  return CORREIOS_REGEX.test(trackingNumber.trim()) ? "correios" : "jadlog";
+  const codigo = trackingNumber.trim();
+  if (CORREIOS_REGEX.test(codigo)) return "correios";
+  if (MELHOR_ENVIO_REGEX.test(codigo)) return "melhorenvio";
+  return "jadlog";
 }
 
 // ── Correios ──────────────────────────────────────────────────────────────────
@@ -31,6 +35,19 @@ async function getCorreiosStatus(trackingNumber) {
   if (!eventos?.length) return null;
   // O evento mais recente vai junto: os avisos ao cliente usam o endereço da
   // agência, o prazo de retirada e o detalhe escrito pelos Correios.
+  return { status: eventos[0].descricao ?? null, evento: eventos[0] };
+}
+
+// ── Melhor Envio ──────────────────────────────────────────────────────────────
+// Mesma resposta dos Correios (lista de eventos), em outra rota.
+async function getMelhorEnvioStatus(trackingNumber) {
+  const response = await axios.post(
+    `${API_BASE}/api/melhorenvio`,
+    { codigo: trackingNumber },
+    { timeout: 15000 }
+  );
+  const eventos = response.data?.eventos;
+  if (!eventos?.length) return null;
   return { status: eventos[0].descricao ?? null, evento: eventos[0] };
 }
 
@@ -99,9 +116,12 @@ async function getActiveTrackings() {
   for (const trackingNumber of trackingNumbers) {
     const carrier = getCarrier(trackingNumber);
     try {
-      const resultado = carrier === "correios"
-        ? await getCorreiosStatus(trackingNumber)
-        : await getJadlogStatus(trackingNumber);
+      const consulta = {
+        correios: getCorreiosStatus,
+        melhorenvio: getMelhorEnvioStatus,
+        jadlog: getJadlogStatus,
+      }[carrier];
+      const resultado = await consulta(trackingNumber);
 
       const rawStatus = resultado && resultado.status;
       if (rawStatus) {
