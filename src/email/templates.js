@@ -5,7 +5,14 @@
  */
 
 const LINK_RASTREIO = "https://www.mrshelby.com.br/pages/rastreio";
-const LINK_CONTATO = "https://api.whatsapp.com/send/?phone=5519993140166&text&type=phone_number&app_absent=0";
+const WHATSAPP_LOJA = "5519993140166";
+
+// Abre o WhatsApp da loja com a mensagem já escrita, para o atendimento
+// identificar o pedido sem precisar perguntar.
+function linkWhatsapp(mensagem) {
+  const texto = encodeURIComponent(mensagem || "");
+  return `https://api.whatsapp.com/send/?phone=${WHATSAPP_LOJA}&text=${texto}&type=phone_number&app_absent=0`;
+}
 
 function esc(v) {
   return String(v == null ? "" : v)
@@ -131,7 +138,19 @@ function emDevolucao({ nome, pedido, codigo }) {
     <p style="font-size:16px;line-height:1.6;color:#333;">Assim que ele chegar aqui, entramos em contato para combinar o reenvio. Se preferir, fale com a gente agora mesmo.</p>`;
   return {
     assunto: assuntoPadrao(pedido, "está voltando para a loja"),
-    html: layout({ titulo: "Seu pedido está voltando para a gente", saudacao: primeiroNome(nome), pedido, corpo, codigo, botao: { url: LINK_CONTATO, texto: "Falar com a Mr. Shelby" } }),
+    html: layout({
+      titulo: "Seu pedido está voltando para a gente",
+      saudacao: primeiroNome(nome),
+      pedido,
+      corpo,
+      codigo,
+      botao: {
+        url: linkWhatsapp(
+          `Olá! Meu pedido ${pedido || "(sem número)"} (rastreio ${codigo}) está voltando para a loja e gostaria de combinar o reenvio.`
+        ),
+        texto: "Falar com a Mr. Shelby",
+      },
+    }),
   };
 }
 
