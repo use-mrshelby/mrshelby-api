@@ -83,4 +83,23 @@ function toShopifyStatus(rawStatus) {
   return null;
 }
 
-module.exports = { toShopifyStatus };
+/**
+ * Texto do evento como ele aparece no painel da Shopify. As descrições dos
+ * Correios falam em "remetente", que é a loja — quem lê o painel entende
+ * melhor com o nome dela. Os demais eventos ficam com o texto original.
+ */
+const MENSAGENS = [
+  { quando: /entregue ao remetente|devolvido ao remetente/i, texto: "Objeto devolvido à Mr. Shelby" },
+  {
+    quando: /prazo de retirada encerrado/i,
+    texto: "Objeto não entregue - prazo de retirada encerrado. O objeto voltará para a Mr. Shelby.",
+  },
+];
+
+function mensagemPainel(rawStatus) {
+  if (!rawStatus) return rawStatus;
+  const regra = MENSAGENS.find((m) => m.quando.test(rawStatus));
+  return regra ? regra.texto : rawStatus;
+}
+
+module.exports = { toShopifyStatus, mensagemPainel };

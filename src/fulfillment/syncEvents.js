@@ -10,7 +10,7 @@
 
 const { getActiveTrackings } = require("../tracking/mrShelby");
 const { getTracking, upsertTracking } = require("../db");
-const { toShopifyStatus } = require("./statusMap");
+const { toShopifyStatus, mensagemPainel } = require("./statusMap");
 const { findFulfillmentByTracking, getFulfillmentId } = require("./shopifyOrders");
 const shopify = require("../shopify/client");
 const logger = require("../logger");
@@ -130,8 +130,9 @@ async function processTracking(trackingNumber, rawStatus) {
     // Create the FulfillmentEvent in Shopify
     await shopify.post(
       `/orders/${orderId}/fulfillments/${fulfillmentId}/events.json`,
-      // message: descrição original dos Correios, exibida ao cliente na página do pedido
-      { event: { status: shopifyStatus, message: rawStatus } }
+      // message: descrição da transportadora, com devoluções reescritas para
+      // quem lê o painel (ver mensagemPainel)
+      { event: { status: shopifyStatus, message: mensagemPainel(rawStatus) } }
     );
 
     logger.info("FulfillmentEvent created", {
