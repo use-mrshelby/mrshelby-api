@@ -22,6 +22,34 @@ function sleep(ms) {
 
 const NOT_DELIVERED_STATUSES = new Set(["attempted_delivery", "failure"]);
 
+const PAGINA_RASTREIO = "https://www.mrshelby.com.br/pages/rastreio";
+
+/**
+ * Em "aguardando retirada", troca o link de rastreio do envio pelo da nossa
+ * página, já com o código. O link padrão das transportadoras é genérico e não
+ * mostra endereço da agência nem prazo — e é esse link que o Martz usa na
+ * mensagem de WhatsApp. notify_customer: false para não disparar e-mail.
+ */
+async function apontarLinkParaNossaPagina({ orderId, fulfillmentId, trackingNumber, transportadora }) {
+  const url = `${PAGINA_RASTREIO}?tracking=${encodeURIComponent(trackingNumber)}`;
+  await shopify.post(`/fulfillments/${fulfillmentId}/update_tracking.json`, {
+    fulfillment: {
+      notify_customer: false,
+      tracking_info: {
+        number: trackingNumber,
+        url,
+        company: transportadora || undefined,
+      },
+    },
+  });
+  logger.info("Link de rastreio apontado para a página da loja", {
+    trackingNumber,
+    orderId,
+    fulfillmentId,
+    url,
+  });
+}
+
 /**
  * Envia os avisos pendentes ao cliente. Nunca derruba o ciclo: falha de e-mail
  * é registrada e o aviso fica pendente para a próxima rodada.
@@ -131,8 +159,11 @@ async function processTracking(trackingNumber, rawStatus, evento) {
   // Avisos ao cliente (retirada, prazo, tentativa, devolução). O lembrete de
   // prazo pode nascer sem o status mudar, então entra na conta de "tem trabalho".
   const avisos = avisosPendentes({ rawStatus, evento, enviados: record?.avisos_enviados });
+  // Em "aguardando retirada", o link do envio passa a apontar para a nossa
+  // página (uma vez por remessa) — é o link que o Martz manda no WhatsApp.
+  const precisaAjustarLink = shopifyStatus === "ready_for_pickup" && !record?.link_ajustado;
 
-  if (unchanged && !precisaLimpar && !avisos.length) {
+  if (unchanged && !precisaLimpar && !avisos.length && !precisaAjustarLink) {
     logger.info("Status unchanged — skipping Shopify call", { trackingNumber, shopifyStatus });
     return "unchanged";
   }
@@ -167,6 +198,25 @@ async function processTracking(trackingNumber, rawStatus, evento) {
       await removeDeliveredEvents(orderId, fulfillmentId, trackingNumber);
     }
 
+    let linkAjustado = record?.link_ajustado || false;
+    if (precisaAjustarLink) {
+      try {
+        await apontarLinkParaNossaPagina({
+          orderId,
+          fulfillmentId,
+          trackingNumber,
+          transportadora: /^[A-Z]{2}\d{9}[A-Z]{2}$/i.test(trackingNumber) ? "Correios" : "Jadlog",
+        });
+        linkAjustado = true;
+      } catch (err) {
+        logger.warn("Não consegui ajustar o link de rastreio — tentaremos depois", {
+          trackingNumber,
+          error: err.message,
+          httpStatus: err.response?.status,
+        });
+      }
+    }
+
     const avisosEnviados = await despacharAvisos({ avisos, orderId, trackingNumber, evento });
 
     if (unchanged) {
@@ -178,6 +228,7 @@ async function processTracking(trackingNumber, rawStatus, evento) {
         fulfillmentId,
         deliveredCleared: true,
         avisosEnviados,
+        linkAjustado,
       });
       logger.info("Status unchanged — limpeza e/ou avisos aplicados", { trackingNumber, shopifyStatus });
       return "unchanged";
@@ -206,6 +257,7 @@ async function processTracking(trackingNumber, rawStatus, evento) {
       fulfillmentId,
       deliveredCleared: precisaLimpar || record?.delivered_cleared || false,
       avisosEnviados,
+      linkAjustado,
     });
     return "updated";
   } catch (err) {

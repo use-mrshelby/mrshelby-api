@@ -30,7 +30,7 @@ function getTracking(trackingNumber) {
   return data[trackingNumber] ?? null;
 }
 
-function upsertTracking({ trackingNumber, lastStatus, orderId, fulfillmentId, deliveredCleared, avisosEnviados }) {
+function upsertTracking({ trackingNumber, lastStatus, orderId, fulfillmentId, deliveredCleared, avisosEnviados, linkAjustado }) {
   const data = _load();
   const existing = data[trackingNumber] ?? {};
   data[trackingNumber] = {
@@ -42,6 +42,8 @@ function upsertTracking({ trackingNumber, lastStatus, orderId, fulfillmentId, de
     // { retirada: "2026-09-23T...", prazo_final: ..., tentativa: ..., devolucao: ... }
     // Cada aviso sai uma vez só por remessa. avisosEnviados: null zera tudo.
     avisos_enviados: avisosEnviados === null ? {} : { ...(existing.avisos_enviados ?? {}), ...(avisosEnviados ?? {}) },
+    // true = o link do envio já aponta para a página de rastreio da loja
+    link_ajustado: linkAjustado ?? existing.link_ajustado ?? false,
     updated_at: new Date().toISOString(),
   };
   _save(data);
