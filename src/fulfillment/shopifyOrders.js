@@ -76,4 +76,21 @@ function extractNextPageInfo(linkHeader) {
   return nextMatch ? nextMatch[1] : null;
 }
 
-module.exports = { findFulfillmentByTracking, getFulfillmentId };
+/**
+ * Contato do cliente para os avisos de entrega: e-mail, nome e número do pedido
+ * (ex.: MS15127). Retorna null se o pedido não tiver e-mail.
+ */
+async function getOrderContact(orderId) {
+  const { data } = await shopify.get(`/orders/${orderId}.json`, {
+    fields: "id,name,email,contact_email,customer,shipping_address",
+  });
+  const o = data.order;
+  if (!o) return null;
+  const nome =
+    (o.customer && [o.customer.first_name, o.customer.last_name].filter(Boolean).join(" ")) ||
+    (o.shipping_address && o.shipping_address.name) ||
+    "";
+  return { email: o.email || o.contact_email || null, nome, pedido: o.name || null };
+}
+
+module.exports = { findFulfillmentByTracking, getFulfillmentId, getOrderContact };

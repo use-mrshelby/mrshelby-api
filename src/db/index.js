@@ -30,7 +30,7 @@ function getTracking(trackingNumber) {
   return data[trackingNumber] ?? null;
 }
 
-function upsertTracking({ trackingNumber, lastStatus, orderId, fulfillmentId, deliveredCleared }) {
+function upsertTracking({ trackingNumber, lastStatus, orderId, fulfillmentId, deliveredCleared, avisosEnviados }) {
   const data = _load();
   const existing = data[trackingNumber] ?? {};
   data[trackingNumber] = {
@@ -39,6 +39,9 @@ function upsertTracking({ trackingNumber, lastStatus, orderId, fulfillmentId, de
     shopify_fulfillment_id: fulfillmentId ?? existing.shopify_fulfillment_id ?? null,
     // true = já conferimos que não sobrou evento "delivered" errado neste envio
     delivered_cleared: deliveredCleared ?? existing.delivered_cleared ?? false,
+    // { retirada: "2026-09-23T...", prazo_final: ..., tentativa: ..., devolucao: ... }
+    // Cada aviso sai uma vez só por remessa.
+    avisos_enviados: { ...(existing.avisos_enviados ?? {}), ...(avisosEnviados ?? {}) },
     updated_at: new Date().toISOString(),
   };
   _save(data);

@@ -11,7 +11,8 @@
 const { getActiveTrackings } = require("../tracking/mrShelby");
 const { getTracking, upsertTracking } = require("../db");
 const { toShopifyStatus, mensagemPainel } = require("./statusMap");
-const { findFulfillmentByTracking, getFulfillmentId } = require("./shopifyOrders");
+const { findFulfillmentByTracking, getFulfillmentId, getOrderContact } = require("./shopifyOrders");
+const { avisosPendentes, enviarAviso } = require("../email/avisos");
 const shopify = require("../shopify/client");
 const logger = require("../logger");
 
@@ -20,6 +21,49 @@ function sleep(ms) {
 }
 
 const NOT_DELIVERED_STATUSES = new Set(["attempted_delivery", "failure"]);
+
+/**
+ * Envia os avisos pendentes ao cliente. Nunca derruba o ciclo: falha de e-mail
+ * é registrada e o aviso fica pendente para a próxima rodada.
+ * Retorna as flags a gravar no banco (só dos que realmente saíram).
+ */
+async function despacharAvisos({ avisos, orderId, trackingNumber, evento }) {
+  if (!avisos || !avisos.length) return undefined;
+
+  let contato = null;
+  try {
+    contato = await getOrderContact(orderId);
+  } catch (err) {
+    logger.warn("Não consegui buscar o contato do pedido — avisos adiados", {
+      trackingNumber,
+      orderId,
+      error: err.message,
+    });
+    return undefined;
+  }
+
+  const flags = {};
+  for (const tipo of avisos) {
+    try {
+      const r = await enviarAviso({
+        tipo,
+        contato,
+        pedido: contato && contato.pedido,
+        codigo: trackingNumber,
+        evento,
+      });
+      if (r && r.enviado) flags[tipo] = new Date().toISOString();
+    } catch (err) {
+      logger.error("Falha ao enviar aviso ao cliente", {
+        tipo,
+        trackingNumber,
+        error: err.message,
+        httpStatus: err.response?.status,
+      });
+    }
+  }
+  return Object.keys(flags).length ? flags : undefined;
+}
 
 async function removeDeliveredEvents(orderId, fulfillmentId, trackingNumber) {
   const base = `/orders/${orderId}/fulfillments/${fulfillmentId}/events`;
@@ -54,9 +98,9 @@ async function syncFulfillmentEvents() {
   let updated = 0;
   let skipped = 0;
 
-  for (const { tracking_number, status } of trackings) {
+  for (const { tracking_number, status, evento } of trackings) {
     // processTracking nunca lança — retorna um resultado pra estatística.
-    const outcome = await processTracking(tracking_number, status);
+    const outcome = await processTracking(tracking_number, status, evento);
     if (outcome === "updated") updated++;
     else if (outcome === "error") skipped++;
   }
@@ -69,7 +113,7 @@ async function syncFulfillmentEvents() {
  * registra e retorna "error" pra que o loop continue e a rodada conclua.
  * Retorna: "updated" | "unchanged" | "skip" | "error".
  */
-async function processTracking(trackingNumber, rawStatus) {
+async function processTracking(trackingNumber, rawStatus, evento) {
   const shopifyStatus = toShopifyStatus(rawStatus);
 
   if (!shopifyStatus) {
@@ -84,8 +128,11 @@ async function processTracking(trackingNumber, rawStatus) {
   const record = getTracking(trackingNumber);
   const unchanged = record?.last_status === shopifyStatus;
   const precisaLimpar = shopifyStatus !== "delivered" && !record?.delivered_cleared;
+  // Avisos ao cliente (retirada, prazo, tentativa, devolução). O lembrete de
+  // prazo pode nascer sem o status mudar, então entra na conta de "tem trabalho".
+  const avisos = avisosPendentes({ rawStatus, evento, enviados: record?.avisos_enviados });
 
-  if (unchanged && !precisaLimpar) {
+  if (unchanged && !precisaLimpar && !avisos.length) {
     logger.info("Status unchanged — skipping Shopify call", { trackingNumber, shopifyStatus });
     return "unchanged";
   }
@@ -120,10 +167,19 @@ async function processTracking(trackingNumber, rawStatus) {
       await removeDeliveredEvents(orderId, fulfillmentId, trackingNumber);
     }
 
+    const avisosEnviados = await despacharAvisos({ avisos, orderId, trackingNumber, evento });
+
     if (unchanged) {
-      // Só faltava a limpeza; o status em si já está na Shopify.
-      upsertTracking({ trackingNumber, lastStatus: shopifyStatus, orderId, fulfillmentId, deliveredCleared: true });
-      logger.info("Status unchanged — apenas limpeza aplicada", { trackingNumber, shopifyStatus });
+      // Status já está na Shopify; faltava só a limpeza e/ou os avisos.
+      upsertTracking({
+        trackingNumber,
+        lastStatus: shopifyStatus,
+        orderId,
+        fulfillmentId,
+        deliveredCleared: true,
+        avisosEnviados,
+      });
+      logger.info("Status unchanged — limpeza e/ou avisos aplicados", { trackingNumber, shopifyStatus });
       return "unchanged";
     }
 
@@ -149,6 +205,7 @@ async function processTracking(trackingNumber, rawStatus) {
       orderId,
       fulfillmentId,
       deliveredCleared: precisaLimpar || record?.delivered_cleared || false,
+      avisosEnviados,
     });
     return "updated";
   } catch (err) {

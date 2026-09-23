@@ -29,7 +29,9 @@ async function getCorreiosStatus(trackingNumber) {
   );
   const eventos = response.data?.eventos;
   if (!eventos?.length) return null;
-  return eventos[0].descricao ?? null;
+  // O evento mais recente vai junto: os avisos ao cliente usam o endereço da
+  // agência, o prazo de retirada e o detalhe escrito pelos Correios.
+  return { status: eventos[0].descricao ?? null, evento: eventos[0] };
 }
 
 // ── Jadlog ────────────────────────────────────────────────────────────────────
@@ -41,7 +43,8 @@ async function getJadlogStatus(trackingNumber) {
   );
   const tracking = response.data?.tracking;
   if (!tracking) return null;
-  return tracking.status ?? tracking.situacao ?? tracking.descricao ?? null;
+  const status = tracking.status ?? tracking.situacao ?? tracking.descricao ?? null;
+  return status ? { status, evento: (tracking.eventos && tracking.eventos[0]) || null } : null;
 }
 
 // ── Busca tracking numbers dos pedidos enviados na Shopify ────────────────────
@@ -96,12 +99,13 @@ async function getActiveTrackings() {
   for (const trackingNumber of trackingNumbers) {
     const carrier = getCarrier(trackingNumber);
     try {
-      const rawStatus = carrier === "correios"
+      const resultado = carrier === "correios"
         ? await getCorreiosStatus(trackingNumber)
         : await getJadlogStatus(trackingNumber);
 
+      const rawStatus = resultado && resultado.status;
       if (rawStatus) {
-        results.push({ tracking_number: trackingNumber, status: rawStatus });
+        results.push({ tracking_number: trackingNumber, status: rawStatus, evento: resultado.evento });
         logger.info("mrShelby: status obtido", { trackingNumber, carrier, rawStatus });
       } else {
         logger.warn("mrShelby: resposta sem status", { trackingNumber, carrier });
