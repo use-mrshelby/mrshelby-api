@@ -10,4 +10,15 @@ if (missing.length) {
 }
 
 logger.info("Shopify AI Toolkit starting");
+
+// AMOSTRAS_PARA=email@exemplo.com faz o serviço enviar, no startup, um exemplo
+// de cada aviso ao cliente (dados fictícios). Serve para revisar texto e
+// layout; depois é só apagar a variável.
+if (process.env.AMOSTRAS_PARA) {
+  const { enviarAmostras } = require("./scripts/enviar-amostras");
+  enviarAmostras(process.env.AMOSTRAS_PARA)
+    .then((r) => logger.info("Amostras enviadas", r))
+    .catch((err) => logger.error("Falha ao enviar amostras", { error: err.message }));
+}
+
 scheduler.start();
