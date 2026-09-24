@@ -62,6 +62,8 @@ const STATUS_RULES = [
       "atraso", "nao entrou na unidade", "aguardando embarque", "embarcado",
       // Jadlog: reagendamento pedido pelo cliente e paradas por clima/estrada.
       "entrega futura", "imprevisto", "temporal", "reagendad",
+      // Correios: cliente pediu para retirar na unidade — ainda a caminho dela.
+      "direcionado para entrega em unidade",
     ],
     shopify: "in_transit",
   },

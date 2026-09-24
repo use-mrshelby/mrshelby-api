@@ -21,7 +21,10 @@ function tipoDoAviso(rawStatus, evento) {
   // usa "DEVOLUCAO", "EM DEVOLUCAO" ou "RECUSADO PELO DESTINATARIO".
   // Extravio e avaria ficam de fora de propósito: exigem conversa, não e-mail.
   if (/entregue ao remetente|devolvido ao remetente|prazo de retirada encerrado|devolucao|devolução|recusado/.test(t)) return "devolucao";
-  if (/aguardando retirada|disponivel para retirada|disponível para retirada/.test(t)) return "retirada";
+  // Qualquer variação de retirada na agência: "aguardando retirada",
+  // "disponível para retirada", "encaminhado para retirada". O caso do prazo
+  // encerrado já saiu como devolução na regra acima.
+  if (/retirada/.test(t)) return "retirada";
   // Jadlog: endereço não localizado / erro de endereço — o cliente precisa
   // confirmar o endereço com a loja, senão o pedido não avança.
   if (/endereco nao localizado|endereço não localizado|erro de endereco|erro de endereço|reitineracao|reitineração/.test(t)) return "endereco";
