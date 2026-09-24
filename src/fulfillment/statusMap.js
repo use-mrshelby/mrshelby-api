@@ -60,6 +60,8 @@ const STATUS_RULES = [
       "encaminhado", "correcao de rota", "entrada", "em tratamento",
       "aguardando tratamento", "recebido", "fiscalizacao", "fiscal",
       "atraso", "nao entrou na unidade", "aguardando embarque", "embarcado",
+      // Jadlog: reagendamento pedido pelo cliente e paradas por clima/estrada.
+      "entrega futura", "imprevisto", "temporal", "reagendad",
     ],
     shopify: "in_transit",
   },

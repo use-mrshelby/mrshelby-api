@@ -120,12 +120,19 @@ function prazoAcabando({ nome, pedido, codigo, evento, diasRestantes }) {
 
 // ── 3. Tentativa de entrega sem sucesso ──────────────────────────────────────
 function tentativaEntrega({ nome, pedido, codigo, evento }) {
+  // O nome da transportadora vem do formato do código (Correios: AA123456789BR).
+  const correios = /^[A-Z]{2}\d{9}[A-Z]{2}$/i.test(String(codigo || ""));
+  const quem = correios ? "O Correio" : "A transportadora";
   // Os Correios escrevem o detalhe sem ponto final; completamos para não
   // deixar a frase pela metade no e-mail.
-  const bruto = (evento && evento.detalhe) || "Os Correios farão uma nova tentativa nos próximos dias úteis";
+  const bruto =
+    (evento && evento.detalhe) ||
+    (correios
+      ? "Os Correios farão uma nova tentativa nos próximos dias úteis"
+      : "A transportadora fará uma nova tentativa nos próximos dias úteis");
   const detalhe = esc(/[.!?]$/.test(bruto.trim()) ? bruto.trim() : `${bruto.trim()}.`);
   const corpo = `
-    <p style="font-size:16px;line-height:1.6;color:#333;">O Correio tentou entregar seu pedido, passou no seu endereço, mas não conseguiu entregar.</p>
+    <p style="font-size:16px;line-height:1.6;color:#333;">${quem} tentou entregar seu pedido, passou no seu endereço, mas não conseguiu entregar.</p>
     <p style="font-size:16px;line-height:1.6;color:#333;">${detalhe}</p>
     <p style="font-size:16px;line-height:1.6;color:#333;">Precisa ter quem receba no horário comercial.</p>`;
   return {

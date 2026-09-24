@@ -17,7 +17,10 @@ const DIAS_AVISO_PRAZO = 2;
 
 function tipoDoAviso(rawStatus, evento) {
   const t = String(rawStatus || "").toLowerCase();
-  if (/entregue ao remetente|devolvido ao remetente|prazo de retirada encerrado/.test(t)) return "devolucao";
+  // Devolução: Correios escrevem "entregue/devolvido ao remetente"; a Jadlog
+  // usa "DEVOLUCAO", "EM DEVOLUCAO" ou "RECUSADO PELO DESTINATARIO".
+  // Extravio e avaria ficam de fora de propósito: exigem conversa, não e-mail.
+  if (/entregue ao remetente|devolvido ao remetente|prazo de retirada encerrado|devolucao|devolução|recusado/.test(t)) return "devolucao";
   if (/aguardando retirada|disponivel para retirada|disponível para retirada/.test(t)) return "retirada";
   // Jadlog: endereço não localizado / erro de endereço — o cliente precisa
   // confirmar o endereço com a loja, senão o pedido não avança.
