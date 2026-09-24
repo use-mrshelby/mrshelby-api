@@ -30,7 +30,7 @@ function getTracking(trackingNumber) {
   return data[trackingNumber] ?? null;
 }
 
-function upsertTracking({ trackingNumber, lastStatus, orderId, fulfillmentId, deliveredCleared, avisosEnviados, linkAjustado }) {
+function upsertTracking({ trackingNumber, lastStatus, orderId, fulfillmentId, deliveredCleared, avisosEnviados, linkAjustado, atributoStatus }) {
   const data = _load();
   const existing = data[trackingNumber] ?? {};
   data[trackingNumber] = {
@@ -44,6 +44,8 @@ function upsertTracking({ trackingNumber, lastStatus, orderId, fulfillmentId, de
     avisos_enviados: avisosEnviados === null ? {} : { ...(existing.avisos_enviados ?? {}), ...(avisosEnviados ?? {}) },
     // true = o link do envio já aponta para a página de rastreio da loja
     link_ajustado: linkAjustado ?? existing.link_ajustado ?? false,
+    // último status já gravado nos atributos do pedido (gatilho do Martz)
+    atributo_status: atributoStatus ?? existing.atributo_status ?? null,
     updated_at: new Date().toISOString(),
   };
   _save(data);

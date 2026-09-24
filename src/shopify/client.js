@@ -143,6 +143,10 @@ const shopify = {
     return requestWithRetry({ method: "POST", url: `${BASE_URL}${path}`, data });
   },
 
+  put(path, data) {
+    return requestWithRetry({ method: "PUT", url: `${BASE_URL}${path}`, data });
+  },
+
   delete(path) {
     return requestWithRetry({ method: "DELETE", url: `${BASE_URL}${path}` });
   },

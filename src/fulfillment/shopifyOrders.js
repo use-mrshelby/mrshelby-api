@@ -93,4 +93,31 @@ async function getOrderContact(orderId) {
   return { email: o.email || o.contact_email || null, nome, pedido: o.name || null };
 }
 
-module.exports = { findFulfillmentByTracking, getFulfillmentId, getOrderContact };
+/**
+ * Grava o status da entrega como atributo do pedido (note_attributes).
+ *
+ * O Martz (e outras ferramentas) não enxergam o status do fulfillment, só os
+ * atributos do pedido — é por eles que a campanha de WhatsApp é disparada.
+ *
+ * A API substitui a lista inteira de atributos, então lemos os atuais e
+ * reescrevemos preservando tudo (dados de pagamento e endereço do gateway).
+ * Retorna true se gravou, false se já estava com o mesmo valor.
+ */
+const ATRIBUTO_STATUS = "status_entrega";
+
+async function setStatusEntregaAttribute(orderId, valor) {
+  const { data } = await shopify.get(`/orders/${orderId}.json`, { fields: "id,note_attributes" });
+  const atuais = data.order?.note_attributes ?? [];
+
+  const jaTem = atuais.find((a) => a.name === ATRIBUTO_STATUS);
+  if (jaTem && jaTem.value === valor) return false;
+
+  const novos = atuais
+    .filter((a) => a.name !== ATRIBUTO_STATUS)
+    .concat([{ name: ATRIBUTO_STATUS, value: valor }]);
+
+  await shopify.put(`/orders/${orderId}.json`, { order: { id: Number(orderId), note_attributes: novos } });
+  return true;
+}
+
+module.exports = { findFulfillmentByTracking, getFulfillmentId, getOrderContact, setStatusEntregaAttribute };
