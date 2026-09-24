@@ -9,6 +9,7 @@
 require("dotenv").config();
 const axios = require("axios");
 const shopify = require("../shopify/client");
+const { getTracking, patchTracking } = require("../db");
 const logger = require("../logger");
 
 const API_BASE = (process.env.MR_SHELBY_API_URL || "https://mrshelby-api.vercel.app").replace(/\/$/, "");
@@ -112,9 +113,19 @@ async function getActiveTrackings() {
   }
 
   const results = [];
+  let ignorados = 0;
 
   for (const trackingNumber of trackingNumbers) {
     const carrier = getCarrier(trackingNumber);
+
+    // Código que a transportadora não reconhece (envios antigos, códigos de
+    // conta encerrada): depois de algumas tentativas, sai da fila por um tempo.
+    const registro = getTracking(trackingNumber);
+    if (registro?.ignorar_ate && new Date(registro.ignorar_ate) > new Date()) {
+      ignorados++;
+      continue;
+    }
+
     try {
       const consulta = {
         correios: getCorreiosStatus,
@@ -127,20 +138,57 @@ async function getActiveTrackings() {
       if (rawStatus) {
         results.push({ tracking_number: trackingNumber, status: rawStatus, evento: resultado.evento });
         logger.info("mrShelby: status obtido", { trackingNumber, carrier, rawStatus });
+        if (registro?.consultas_sem_retorno) {
+          patchTracking(trackingNumber, { consultas_sem_retorno: 0, ignorar_ate: null });
+        }
       } else {
-        logger.warn("mrShelby: resposta sem status", { trackingNumber, carrier });
+        registrarConsultaSemRetorno(trackingNumber, carrier, registro, "resposta sem status");
       }
     } catch (err) {
-      logger.warn("mrShelby: falha ao consultar transportadora", {
-        trackingNumber,
-        carrier,
-        error: err.message,
-        httpStatus: err.response?.status,
-      });
+      const httpStatus = err.response?.status;
+      if (httpStatus === 404) {
+        registrarConsultaSemRetorno(trackingNumber, carrier, registro, "código não encontrado (404)");
+      } else {
+        logger.warn("mrShelby: falha ao consultar transportadora", {
+          trackingNumber,
+          carrier,
+          error: err.message,
+          httpStatus,
+        });
+      }
     }
   }
 
+  if (ignorados) {
+    logger.info(`mrShelby: ${ignorados} tracking(s) fora da fila (código não reconhecido)`);
+  }
+
   return results;
+}
+
+// Depois de TENTATIVAS_ANTES_DE_IGNORAR falhas seguidas, o código fica de fora
+// por DIAS_IGNORANDO — evita dezenas de consultas inúteis por rodada. Se ele
+// voltar a responder um dia, o contador zera e ele volta para a fila.
+const TENTATIVAS_ANTES_DE_IGNORAR = 3;
+const DIAS_IGNORANDO = 30;
+
+function registrarConsultaSemRetorno(trackingNumber, carrier, registro, motivo) {
+  const falhas = (registro?.consultas_sem_retorno ?? 0) + 1;
+  const campos = { consultas_sem_retorno: falhas };
+
+  if (falhas >= TENTATIVAS_ANTES_DE_IGNORAR) {
+    campos.ignorar_ate = new Date(Date.now() + DIAS_IGNORANDO * 86400000).toISOString();
+    logger.warn("mrShelby: código sem retorno — saindo da fila por 30 dias", {
+      trackingNumber,
+      carrier,
+      motivo,
+      falhas,
+    });
+  } else {
+    logger.warn("mrShelby: falha ao consultar transportadora", { trackingNumber, carrier, motivo, falhas });
+  }
+
+  patchTracking(trackingNumber, campos);
 }
 
 module.exports = { getActiveTrackings };

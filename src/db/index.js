@@ -49,4 +49,18 @@ function upsertTracking({ trackingNumber, lastStatus, orderId, fulfillmentId, de
   _save(data);
 }
 
-module.exports = { getTracking, upsertTracking };
+/**
+ * Atualiza só os campos informados, preservando o resto do registro.
+ * Usado para o controle de códigos que a transportadora não reconhece.
+ */
+function patchTracking(trackingNumber, campos) {
+  const data = _load();
+  data[trackingNumber] = {
+    ...(data[trackingNumber] ?? {}),
+    ...campos,
+    updated_at: new Date().toISOString(),
+  };
+  _save(data);
+}
+
+module.exports = { getTracking, upsertTracking, patchTracking };
