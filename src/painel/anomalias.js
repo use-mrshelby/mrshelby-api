@@ -53,6 +53,11 @@ function classificar(registro) {
     if (/remetente|devolucao|devolução|devolvido|prazo de retirada encerrado|recusado/.test(texto)) {
       return { grupo: "devolucao", motivo: "Voltando para a loja" };
     }
+    // Registro antigo, sem o texto da transportadora: se o cliente já recebeu
+    // o aviso de devolução, é devolução — não uma falha nova.
+    if (!texto && registro.avisos_enviados && registro.avisos_enviados.devolucao) {
+      return { grupo: "devolucao", motivo: "Voltando para a loja" };
+    }
     if (/numero nao localizado/.test(texto)) {
       return { grupo: "urgente", motivo: "Transportadora perdeu o registro do objeto" };
     }
@@ -129,6 +134,14 @@ async function listarAnomalias() {
   const itens = [];
   for (const p of pendentes) {
     const dados = await dadosDoPedido(p.registro.shopify_order_id);
+
+    // Código sem informação só interessa enquanto o PEDIDO é recente: envio
+    // antigo sem retorno da transportadora é histórico, não pendência.
+    if (p.grupo === "sem_info" && dados.criado_em) {
+      const diasPedido = diasDesde(dados.criado_em);
+      if (diasPedido !== null && diasPedido > DIAS_SEM_INFO_NO_PAINEL) continue;
+    }
+
     itens.push({
       codigo: p.codigo,
       grupo: p.grupo,
