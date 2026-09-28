@@ -142,12 +142,19 @@ function tentativaEntrega({ nome, pedido, codigo, evento }) {
 }
 
 // ── 4. Endereço não localizado (Jadlog) ──────────────────────────────────────
-function enderecoNaoLocalizado({ nome, pedido, codigo }) {
+function enderecoNaoLocalizado({ nome, pedido, codigo, rawStatus }) {
+  // A Jadlog usa "CONTATE SEU FORNECEDOR" quando a pendência é com a loja e
+  // não necessariamente com o endereço. Nesse caso não afirmamos que o
+  // endereço está errado — só pedimos a confirmação dos dados.
+  const pendenciaComALoja = /contate seu fornecedor/i.test(String(rawStatus || ""));
+  const abertura = pendenciaComALoja
+    ? "A transportadora não conseguiu concluir a entrega do seu pedido e pediu uma confirmação dos dados de entrega."
+    : "A transportadora saiu para entregar seu pedido, mas não conseguiu localizar o endereço.";
   const corpo = `
-    <p style="font-size:16px;line-height:1.6;color:#333;">A transportadora saiu para entregar seu pedido, mas não conseguiu localizar o endereço.</p>
+    <p style="font-size:16px;line-height:1.6;color:#333;">${abertura}</p>
     <p style="font-size:16px;line-height:1.6;color:#333;">Para não perder a entrega, confirme com a gente o endereço completo, com número, complemento e um ponto de referência.</p>`;
   return {
-    assunto: assuntoPadrao(pedido, "está com problema no endereço de entrega"),
+    assunto: assuntoPadrao(pedido, pendenciaComALoja ? "precisa de uma confirmação para ser entregue" : "está com problema no endereço de entrega"),
     html: layout({
       titulo: "",
       saudacao: primeiroNome(nome),
@@ -156,7 +163,7 @@ function enderecoNaoLocalizado({ nome, pedido, codigo }) {
       codigo,
       botao: {
         url: linkWhatsapp(
-          `Olá! Meu pedido ${pedido || "(sem número)"} (rastreio ${codigo}) está com problema no endereço de entrega e quero confirmar os dados.`
+          `Olá! Meu pedido ${pedido || "(sem número)"} (rastreio ${codigo}) não foi entregue e quero confirmar o endereço de entrega.`
         ),
         texto: "Confirmar meu endereço",
       },

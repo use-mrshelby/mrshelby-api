@@ -16,20 +16,22 @@ const STATUS_RULES = [
   {
     keywords: [
       "remetente", "devolvido", "devolucao", "prazo de retirada encerrado",
-      "endereco incorreto", "recusado", "trafego interrompido", "travado",
+      "recusado", "trafego interrompido", "travado",
       "extraviado", "avariado", "sinistro",
-      // Jadlog: o objeto sumiu do sistema dela, ou ela pede contato da loja.
-      // Nos dois casos o envio parou e alguém da equipe precisa agir.
-      "numero nao localizado", "contate seu fornecedor",
     ],
     shopify: "failure",
   },
-  // ── Tentativa de entrega sem sucesso ──────────────────────────────────────────
-  // Jadlog: "ENDERECO NAO LOCALIZADO", "REITINERACAO - ERRO DE ENDERECO".
+  // ── Tentativa de entrega sem sucesso / endereço ──────────────────────────────
+  // Jadlog: "ENDERECO NAO LOCALIZADO", "NUMERO NAO LOCALIZADO" (o motorista não
+  // achou o número na rua), "REITINERACAO - ERRO DE ENDERECO" e "CONTATE SEU
+  // FORNECEDOR" — todos são entrega não concluída que o cliente ainda resolve
+  // confirmando o endereço, não objeto perdido. A Jadlog dá 10 dias corridos
+  // para a loja mandar informação complementar antes de devolver.
   {
     keywords: [
       "nao entregue", "carteiro nao atendido", "tentativa", "ausente", "nao encontrado",
-      "endereco nao localizado", "erro de endereco", "reitineracao",
+      "endereco nao localizado", "numero nao localizado", "erro de endereco",
+      "endereco incorreto", "reitineracao", "contate seu fornecedor",
     ],
     shopify: "attempted_delivery",
   },

@@ -16,6 +16,9 @@ const cachePedidos = new Map(); // orderId -> { dados, buscadoEm }
 const DIAS_PARADO_ALERTA = 7;
 // Código sem retorno da transportadora só interessa enquanto o envio é recente.
 const DIAS_SEM_INFO_NO_PAINEL = 30;
+// A Jadlog dá 10 dias corridos para a loja mandar informação complementar
+// num caso de endereço; passado o prazo, devolve o objeto.
+const DIAS_ATE_DEVOLVER_ENDERECO = 10;
 
 // Grupos do painel, em ordem de urgência.
 const GRUPOS = {
@@ -24,6 +27,10 @@ const GRUPOS = {
   devolucao: { titulo: "Devoluções", cor: "#7d5fff" },
   sem_info: { titulo: "Sem informação", cor: "#777" },
 };
+
+// Todos os jeitos que Correios e Jadlog escrevem o mesmo problema: a entrega
+// não saiu porque o endereço não foi localizado ou precisa de confirmação.
+const ENDERECO = /endereco|endereço|reitineracao|numero nao localizado|contate seu fornecedor/;
 
 function diasDesde(iso) {
   if (!iso) return null;
@@ -80,11 +87,10 @@ function classificar(registro) {
     if (!texto && registro.avisos_enviados && registro.avisos_enviados.devolucao) {
       return { grupo: "devolucao", motivo: "Voltando para a loja" };
     }
-    if (/numero nao localizado/.test(texto)) {
-      return { grupo: "urgente", motivo: "Transportadora perdeu o registro do objeto" };
-    }
-    if (/contate seu fornecedor/.test(texto)) {
-      return { grupo: "urgente", motivo: "A transportadora pede contato da loja" };
+    // "NUMERO NAO LOCALIZADO" é o motorista que não achou o número na rua,
+    // não objeto perdido. Registro antigo ainda pode chegar aqui como falha.
+    if (ENDERECO.test(texto)) {
+      return { grupo: "urgente", motivo: "Endereço não localizado" };
     }
     if (/extraviado|sinistro|avariado/.test(texto)) {
       return { grupo: "urgente", motivo: "Objeto extraviado ou avariado" };
@@ -93,7 +99,7 @@ function classificar(registro) {
   }
 
   if (status === "attempted_delivery") {
-    return { grupo: "urgente", motivo: /endereco|endereço|reitineracao/.test(texto) ? "Endereço não localizado" : "Tentativa de entrega sem sucesso" };
+    return { grupo: "urgente", motivo: ENDERECO.test(texto) ? "Endereço não localizado" : "Tentativa de entrega sem sucesso" };
   }
 
   if (status === "ready_for_pickup") {
@@ -116,12 +122,20 @@ function classificar(registro) {
   return null;
 }
 
+/** O aviso de prazo só entra quando sabemos quantos dias restam. */
+function prazoEmTexto(dias) {
+  if (dias === null || dias === undefined) return "";
+  if (dias === 0) return " O prazo para passar o endereço certo acabou, e o pedido pode voltar para a loja a qualquer momento.";
+  if (dias === 1) return " Temos só até amanhã para passar o endereço certo, senão o pedido volta para a loja.";
+  return ` Temos ${dias} dias para passar o endereço certo, senão o pedido volta para a loja.`;
+}
+
 /**
  * Mensagem pronta de WhatsApp, com os dados do cliente, do pedido e do
  * rastreio já escritos, mais o texto do problema. O operador clica, confere
  * e envia — sem precisar redigir nem procurar informação.
  */
-function mensagemWhatsapp({ grupo, motivo, cliente, pedido, codigo, transportadora, cidade, rastreio_url }) {
+function mensagemWhatsapp({ grupo, motivo, cliente, pedido, codigo, transportadora, cidade, rastreio_url, dias_ate_devolver }) {
   const primeiro = String(cliente || "").trim().split(/\s+/)[0] || "";
   const nome = primeiro ? primeiro.charAt(0).toUpperCase() + primeiro.slice(1).toLowerCase() : "";
   const ola = nome ? `Olá, ${nome}!` : "Olá!";
@@ -141,15 +155,14 @@ function mensagemWhatsapp({ grupo, motivo, cliente, pedido, codigo, transportado
     "Aguardando retirada, prazo acabando":
       "Seu pedido está na agência dos Correios e o prazo de retirada está acabando. Se não for retirado a tempo, ele volta para a Mr. Shelby. Endereço, prazo e documentos no link do rastreio.",
     "Endereço não localizado":
-      "A transportadora não conseguiu localizar o seu endereço para a entrega. Pode confirmar por aqui o endereço completo, com número, complemento, CEP e um ponto de referência? Assim reenviamos ainda hoje.",
+      "A transportadora não conseguiu localizar o seu endereço para a entrega." +
+      prazoEmTexto(dias_ate_devolver) +
+      " Pode confirmar por aqui o endereço completo, com número, complemento, CEP e um ponto de referência? Assim reenviamos a entrega.",
     "Tentativa de entrega sem sucesso":
       "A transportadora passou no seu endereço e não encontrou ninguém para receber. Qual o melhor dia e horário para a nova tentativa? Precisa ter alguém no local em horário comercial.",
     "Voltando para a loja":
       "A entrega não foi concluída e o seu pedido está voltando para a Mr. Shelby. Assim que ele chegar aqui podemos reenviar para o mesmo endereço, para outro endereço, ou fazer o estorno — o que você preferir?",
-    "Transportadora perdeu o registro do objeto":
-      "O rastreio do seu pedido parou de atualizar e já acionamos a transportadora para localizar o objeto. Vamos te dar retorno; se preferir, já reenviamos o pedido.",
-    "A transportadora pede contato da loja":
-      "Estamos resolvendo uma pendência do seu pedido junto à transportadora e te damos retorno assim que ela for liberada.",
+
     "Objeto extraviado ou avariado":
       "Tivemos um problema com o seu pedido durante o transporte. Podemos reenviar o mesmo item ou fazer o estorno — o que você preferir?",
     "Parado na transportadora":
@@ -237,6 +250,12 @@ async function listarAnomalias() {
       rastreio_url: `https://www.mrshelby.com.br/pages/rastreio?tracking=${encodeURIComponent(p.codigo)}`,
       ...dados,
     };
+
+    // Caso de endereço tem relógio: sem informação complementar, a
+    // transportadora devolve. Mostrar quantos dias restam muda a prioridade.
+    if (item.motivo === "Endereço não localizado" && item.dias_parado !== null) {
+      item.dias_ate_devolver = Math.max(DIAS_ATE_DEVOLVER_ENDERECO - item.dias_parado, 0);
+    }
 
     // O operador clica e o WhatsApp já abre com o texto do problema escrito.
     item.mensagem_whatsapp = mensagemWhatsapp(item);

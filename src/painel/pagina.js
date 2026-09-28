@@ -38,6 +38,7 @@ function paginaHtml() {
   .acoes a:hover { border-color:var(--fraco); }
   .vazio { color:var(--fraco); }
   .dias { font-variant-numeric:tabular-nums; }
+  .prazo { color:#c0392b; }
 </style>
 </head>
 <body>
@@ -62,6 +63,7 @@ function card(i) {
     <div class="meta">
       \${i.transportadora} · \${i.codigo}\${i.cidade ? ' · ' + i.cidade : ''}
       \${i.dias_parado !== null ? ' · <span class="dias">parado há ' + i.dias_parado + ' dia(s)</span>' : ''}
+      \${i.dias_ate_devolver !== undefined && i.dias_ate_devolver !== null ? ' · <b class="prazo">' + (i.dias_ate_devolver === 0 ? 'prazo esgotado — volta a qualquer momento' : 'volta em ' + i.dias_ate_devolver + ' dia(s) se o cliente não responder') + '</b>' : ''}
       \${i.texto_transportadora ? '<br>' + i.texto_transportadora : ''}
     </div>
     <div class="contato">

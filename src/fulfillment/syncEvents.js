@@ -60,7 +60,7 @@ async function apontarLinkParaNossaPagina({ orderId, fulfillmentId, trackingNumb
  * é registrada e o aviso fica pendente para a próxima rodada.
  * Retorna as flags a gravar no banco (só dos que realmente saíram).
  */
-async function despacharAvisos({ avisos, orderId, trackingNumber, evento }) {
+async function despacharAvisos({ avisos, orderId, trackingNumber, evento, rawStatus }) {
   if (!avisos || !avisos.length) return undefined;
 
   let contato = null;
@@ -84,6 +84,7 @@ async function despacharAvisos({ avisos, orderId, trackingNumber, evento }) {
         pedido: contato && contato.pedido,
         codigo: trackingNumber,
         evento,
+        rawStatus,
       });
       if (r && r.enviado) flags[tipo] = new Date().toISOString();
     } catch (err) {
@@ -241,7 +242,7 @@ async function processTracking(trackingNumber, rawStatus, evento) {
       }
     }
 
-    const avisosEnviados = await despacharAvisos({ avisos, orderId, trackingNumber, evento });
+    const avisosEnviados = await despacharAvisos({ avisos, orderId, trackingNumber, evento, rawStatus });
 
     if (unchanged) {
       // Status já está na Shopify; faltava só a limpeza e/ou os avisos.

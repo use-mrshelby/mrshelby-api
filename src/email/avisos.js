@@ -25,9 +25,13 @@ function tipoDoAviso(rawStatus, evento) {
   // "disponível para retirada", "encaminhado para retirada". O caso do prazo
   // encerrado já saiu como devolução na regra acima.
   if (/retirada/.test(t)) return "retirada";
-  // Jadlog: endereço não localizado / erro de endereço — o cliente precisa
-  // confirmar o endereço com a loja, senão o pedido não avança.
-  if (/endereco nao localizado|endereço não localizado|erro de endereco|erro de endereço|reitineracao|reitineração/.test(t)) return "endereco";
+  // Problema de endereço. A Jadlog escreve o mesmo caso de três jeitos
+  // ("ENDERECO NAO LOCALIZADO", "NUMERO NAO LOCALIZADO" quando o motorista não
+  // acha o número, e "CONTATE SEU FORNECEDOR"); os Correios escrevem "endereço
+  // incorreto". Em todos, o cliente resolve confirmando o endereço com a loja.
+  // Vem antes de "tentativa" de propósito: o texto dos Correios traz "não
+  // entregue" e cairia no e-mail de "não tinha ninguém em casa".
+  if (/endereco nao localizado|endereço não localizado|numero nao localizado|número não localizado|erro de endereco|erro de endereço|endereco incorreto|endereço incorreto|reitineracao|reitineração|contate seu fornecedor/.test(t)) return "endereco";
   if (/nao entregue|não entregue|carteiro nao atendido|carteiro não atendido|ausente/.test(t)) return "tentativa";
   return null;
 }
@@ -57,12 +61,13 @@ function avisosPendentes({ rawStatus, evento, enviados = {} }) {
   return pendentes;
 }
 
-async function enviarAviso({ tipo, contato, pedido, codigo, evento }) {
+async function enviarAviso({ tipo, contato, pedido, codigo, evento, rawStatus }) {
   const dados = {
     nome: contato && contato.nome,
     pedido: pedido || codigo,
     codigo,
     evento,
+    rawStatus,
     diasRestantes: evento && evento.dtLimiteRetirada ? Math.max(diasAte(evento.dtLimiteRetirada), 0) : null,
   };
 
