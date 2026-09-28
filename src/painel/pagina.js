@@ -27,6 +27,9 @@ function paginaHtml() {
   .pedido { font-weight:700; }
   .motivo { font-weight:600; }
   .meta { color:var(--fraco); font-size:13px; margin-top:4px; }
+  .contato { margin-top:8px; font-size:13px; border-left:3px solid var(--linha); padding:2px 0 2px 10px; }
+  .contato b { font-weight:600; }
+  .contato .nenhum { color:var(--fraco); }
   .acoes { margin-top:10px; display:flex; flex-wrap:wrap; gap:8px; }
   .acoes a { font-size:13px; text-decoration:none; border:1px solid var(--linha); border-radius:6px; padding:6px 10px; color:var(--txt); }
   .acoes a:hover { border-color:var(--fraco); }
@@ -45,6 +48,7 @@ function paginaHtml() {
 <main id="conteudo"></main>
 <script>
 const fmt = n => n === null || n === undefined ? '—' : n;
+const dataHora = iso => { try { return new Date(iso).toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }); } catch (e) { return iso; } };
 function card(i) {
   const tel = i.telefone ? i.telefone.replace(/\\D/g,'') : '';
   const wa = tel ? 'https://wa.me/' + (tel.length <= 11 ? '55'+tel : tel) : null;
@@ -57,6 +61,11 @@ function card(i) {
       \${i.transportadora} · \${i.codigo}\${i.cidade ? ' · ' + i.cidade : ''}
       \${i.dias_parado !== null ? ' · <span class="dias">parado há ' + i.dias_parado + ' dia(s)</span>' : ''}
       \${i.texto_transportadora ? '<br>' + i.texto_transportadora : ''}
+    </div>
+    <div class="contato">
+      \${(i.contatos && i.contatos.length)
+        ? '<b>Já comunicado:</b><br>' + i.contatos.map(c => c.rotulo + ' — ' + dataHora(c.quando) + (c.dias === 0 ? ' (hoje)' : c.dias === 1 ? ' (ontem)' : ' (há ' + c.dias + ' dias)')).join('<br>')
+        : '<span class="nenhum">Nenhuma comunicação automática enviada para este pedido.</span>'}
     </div>
     <div class="acoes">
       \${wa ? '<a href="'+wa+'" target="_blank">WhatsApp</a>' : ''}

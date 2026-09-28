@@ -30,6 +30,28 @@ function diasDesde(iso) {
   return Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
 }
 
+// O que já foi comunicado ao cliente, para o operador não repetir contato.
+const ROTULO_AVISO = {
+  retirada: "E-mail: pedido aguardando retirada",
+  prazo_final: "E-mail: prazo de retirada acabando",
+  tentativa: "E-mail: tentativa de entrega sem sucesso",
+  endereco: "E-mail: confirmar endereço",
+  devolucao: "E-mail: pedido voltando para a loja",
+};
+
+function historicoDeContato(registro) {
+  const enviados = registro.avisos_enviados || {};
+  return Object.entries(enviados)
+    .filter(([, quando]) => quando)
+    .map(([tipo, quando]) => ({
+      tipo,
+      rotulo: ROTULO_AVISO[tipo] || `E-mail: ${tipo}`,
+      quando,
+      dias: diasDesde(quando),
+    }))
+    .sort((a, b) => new Date(a.quando) - new Date(b.quando));
+}
+
 /**
  * Decide se o pedido entra no painel e em qual grupo.
  * Retorna null para o que está seguindo seu curso normal.
@@ -148,6 +170,7 @@ async function listarAnomalias() {
       motivo: p.motivo,
       status: p.registro.last_status,
       texto_transportadora: p.registro.raw_status,
+      contatos: historicoDeContato(p.registro),
       dias_parado: diasDesde(p.registro.status_desde) ?? diasDesde(p.registro.updated_at),
       transportadora: /^[A-Z]{2}\d{9}[A-Z]{2}$/i.test(p.codigo) ? "Correios" : "Jadlog",
       rastreio_url: `https://www.mrshelby.com.br/pages/rastreio?tracking=${encodeURIComponent(p.codigo)}`,
