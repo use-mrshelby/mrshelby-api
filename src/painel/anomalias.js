@@ -135,11 +135,11 @@ async function listarAnomalias() {
   for (const p of pendentes) {
     const dados = await dadosDoPedido(p.registro.shopify_order_id);
 
-    // Código sem informação só interessa enquanto o PEDIDO é recente: envio
-    // antigo sem retorno da transportadora é histórico, não pendência.
-    if (p.grupo === "sem_info" && dados.criado_em) {
+    // Código sem informação só interessa enquanto o PEDIDO é recente. Sem
+    // pedido correspondente na Shopify não há o que fazer: fica de fora.
+    if (p.grupo === "sem_info") {
       const diasPedido = diasDesde(dados.criado_em);
-      if (diasPedido !== null && diasPedido > DIAS_SEM_INFO_NO_PAINEL) continue;
+      if (diasPedido === null || diasPedido > DIAS_SEM_INFO_NO_PAINEL) continue;
     }
 
     itens.push({
