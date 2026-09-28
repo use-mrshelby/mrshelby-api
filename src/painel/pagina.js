@@ -30,6 +30,9 @@ function paginaHtml() {
   .contato { margin-top:8px; font-size:13px; border-left:3px solid var(--linha); padding:2px 0 2px 10px; }
   .contato b { font-weight:600; }
   .contato .nenhum { color:var(--fraco); }
+  .previa { margin-top:8px; font-size:13px; }
+  .previa summary { cursor:pointer; color:var(--fraco); }
+  .previa pre { white-space:pre-wrap; font:inherit; background:var(--bg); border:1px solid var(--linha); border-radius:6px; padding:10px; margin:8px 0 0; }
   .acoes { margin-top:10px; display:flex; flex-wrap:wrap; gap:8px; }
   .acoes a { font-size:13px; text-decoration:none; border:1px solid var(--linha); border-radius:6px; padding:6px 10px; color:var(--txt); }
   .acoes a:hover { border-color:var(--fraco); }
@@ -48,10 +51,9 @@ function paginaHtml() {
 <main id="conteudo"></main>
 <script>
 const fmt = n => n === null || n === undefined ? '—' : n;
+const escapar = t => String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 const dataHora = iso => { try { return new Date(iso).toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }); } catch (e) { return iso; } };
 function card(i) {
-  const tel = i.telefone ? i.telefone.replace(/\\D/g,'') : '';
-  const wa = tel ? 'https://wa.me/' + (tel.length <= 11 ? '55'+tel : tel) : null;
   return \`<div class="card">
     <div class="linha1">
       <span><span class="pedido">\${fmt(i.pedido) || i.codigo}</span> · \${fmt(i.cliente)}</span>
@@ -67,8 +69,9 @@ function card(i) {
         ? '<b>Já comunicado:</b><br>' + i.contatos.map(c => c.rotulo + ' — ' + dataHora(c.quando) + (c.dias === 0 ? ' (hoje)' : c.dias === 1 ? ' (ontem)' : ' (há ' + c.dias + ' dias)')).join('<br>')
         : '<span class="nenhum">Nenhuma comunicação automática enviada para este pedido.</span>'}
     </div>
+    \${i.mensagem_whatsapp ? '<details class="previa"><summary>Ver a mensagem que vai ser enviada</summary><pre>' + escapar(i.mensagem_whatsapp) + '</pre></details>' : ''}
     <div class="acoes">
-      \${wa ? '<a href="'+wa+'" target="_blank">WhatsApp</a>' : ''}
+      \${i.whatsapp_url ? '<a href="'+i.whatsapp_url+'" target="_blank">WhatsApp com mensagem pronta</a>' : ''}
       \${i.email ? '<a href="mailto:'+i.email+'">E-mail</a>' : ''}
       <a href="\${i.rastreio_url}" target="_blank">Rastreio</a>
       \${i.admin_url ? '<a href="'+i.admin_url+'" target="_blank">Pedido</a>' : ''}

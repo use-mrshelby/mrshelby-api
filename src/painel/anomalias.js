@@ -116,6 +116,67 @@ function classificar(registro) {
   return null;
 }
 
+/**
+ * Mensagem pronta de WhatsApp, com os dados do cliente, do pedido e do
+ * rastreio já escritos, mais o texto do problema. O operador clica, confere
+ * e envia — sem precisar redigir nem procurar informação.
+ */
+function mensagemWhatsapp({ grupo, motivo, cliente, pedido, codigo, transportadora, cidade, rastreio_url }) {
+  const primeiro = String(cliente || "").trim().split(/\s+/)[0] || "";
+  const nome = primeiro ? primeiro.charAt(0).toUpperCase() + primeiro.slice(1).toLowerCase() : "";
+  const ola = nome ? `Olá, ${nome}!` : "Olá!";
+
+  const ficha = [
+    pedido ? `Pedido: ${pedido}` : null,
+    `Rastreio: ${codigo}${transportadora ? ` (${transportadora})` : ""}`,
+    cidade ? `Entrega: ${cidade}` : null,
+    rastreio_url ? `Acompanhe aqui: ${rastreio_url}` : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const corpos = {
+    "Aguardando retirada na agência":
+      "Seu pedido chegou na agência dos Correios e está aguardando a sua retirada. O endereço da agência e o prazo estão no link do rastreio. Leve um documento com foto.",
+    "Aguardando retirada, prazo acabando":
+      "Seu pedido está na agência dos Correios e o prazo de retirada está acabando. Se não for retirado a tempo, ele volta para a Mr. Shelby. Endereço, prazo e documentos no link do rastreio.",
+    "Endereço não localizado":
+      "A transportadora não conseguiu localizar o seu endereço para a entrega. Pode confirmar por aqui o endereço completo, com número, complemento, CEP e um ponto de referência? Assim reenviamos ainda hoje.",
+    "Tentativa de entrega sem sucesso":
+      "A transportadora passou no seu endereço e não encontrou ninguém para receber. Qual o melhor dia e horário para a nova tentativa? Precisa ter alguém no local em horário comercial.",
+    "Voltando para a loja":
+      "A entrega não foi concluída e o seu pedido está voltando para a Mr. Shelby. Assim que ele chegar aqui podemos reenviar para o mesmo endereço, para outro endereço, ou fazer o estorno — o que você preferir?",
+    "Transportadora perdeu o registro do objeto":
+      "O rastreio do seu pedido parou de atualizar e já acionamos a transportadora para localizar o objeto. Vamos te dar retorno; se preferir, já reenviamos o pedido.",
+    "A transportadora pede contato da loja":
+      "Estamos resolvendo uma pendência do seu pedido junto à transportadora e te damos retorno assim que ela for liberada.",
+    "Objeto extraviado ou avariado":
+      "Tivemos um problema com o seu pedido durante o transporte. Podemos reenviar o mesmo item ou fazer o estorno — o que você preferir?",
+    "Parado na transportadora":
+      "Seu pedido está parado na transportadora e já pedimos a liberação. Assim que ele voltar a andar, te avisamos.",
+    "Entrega com falha":
+      "A entrega do seu pedido não foi concluída e já estamos verificando com a transportadora o que aconteceu. Te damos retorno em breve.",
+    "Código não reconhecido pela transportadora":
+      "O código de rastreio do seu pedido ainda não está aparecendo no sistema da transportadora e já estamos verificando isso com ela. Te damos retorno em breve.",
+  };
+
+  const corpo =
+    corpos[motivo] ||
+    (grupo === "devolucao"
+      ? corpos["Voltando para a loja"]
+      : "Estamos acompanhando a entrega do seu pedido, que está parada, e já acionamos a transportadora. Te damos retorno em breve.");
+
+  return `${ola} Aqui é da Mr. Shelby.\n\n${ficha}\n\n${corpo}`;
+}
+
+/** Link do WhatsApp com a mensagem já escrita, no formato usado nos e-mails. */
+function linkWhatsapp(telefone, mensagem) {
+  const digitos = String(telefone || "").replace(/\D/g, "");
+  if (digitos.length < 10) return null;
+  const numero = digitos.length <= 11 ? `55${digitos}` : digitos;
+  return `https://api.whatsapp.com/send/?phone=${numero}&text=${encodeURIComponent(mensagem)}&type=phone_number&app_absent=0`;
+}
+
 async function dadosDoPedido(orderId) {
   if (!orderId) return {};
   const cache = cachePedidos.get(orderId);
@@ -164,7 +225,7 @@ async function listarAnomalias() {
       if (diasPedido === null || diasPedido > DIAS_SEM_INFO_NO_PAINEL) continue;
     }
 
-    itens.push({
+    const item = {
       codigo: p.codigo,
       grupo: p.grupo,
       motivo: p.motivo,
@@ -175,7 +236,13 @@ async function listarAnomalias() {
       transportadora: /^[A-Z]{2}\d{9}[A-Z]{2}$/i.test(p.codigo) ? "Correios" : "Jadlog",
       rastreio_url: `https://www.mrshelby.com.br/pages/rastreio?tracking=${encodeURIComponent(p.codigo)}`,
       ...dados,
-    });
+    };
+
+    // O operador clica e o WhatsApp já abre com o texto do problema escrito.
+    item.mensagem_whatsapp = mensagemWhatsapp(item);
+    item.whatsapp_url = linkWhatsapp(item.telefone, item.mensagem_whatsapp);
+
+    itens.push(item);
   }
 
   const ordem = ["urgente", "acompanhar", "devolucao", "sem_info"];
