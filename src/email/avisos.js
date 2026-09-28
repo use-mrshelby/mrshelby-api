@@ -93,4 +93,4 @@ async function enviarAviso({ tipo, contato, pedido, codigo, evento, rawStatus })
   });
 }
 
-module.exports = { avisosPendentes, enviarAviso, tipoDoAviso, diasAte };
+module.exports = { avisosPendentes, enviarAviso, tipoDoAviso, diasAte, DIAS_AVISO_PRAZO };

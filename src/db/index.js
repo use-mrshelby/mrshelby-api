@@ -35,7 +35,7 @@ function listarTrackings() {
   return _load();
 }
 
-function upsertTracking({ trackingNumber, lastStatus, rawStatus, orderId, fulfillmentId, deliveredCleared, avisosEnviados, linkAjustado, atributoStatus }) {
+function upsertTracking({ trackingNumber, lastStatus, rawStatus, orderId, fulfillmentId, deliveredCleared, avisosEnviados, linkAjustado, atributoStatus, atributoSituacao }) {
   const data = _load();
   const existing = data[trackingNumber] ?? {};
   const mudouStatus = existing.last_status !== lastStatus || existing.raw_status !== rawStatus;
@@ -56,6 +56,9 @@ function upsertTracking({ trackingNumber, lastStatus, rawStatus, orderId, fulfil
     link_ajustado: linkAjustado ?? existing.link_ajustado ?? false,
     // último status já gravado nos atributos do pedido (gatilho do Martz)
     atributo_status: atributoStatus ?? existing.atributo_status ?? null,
+    // situação detalhada já gravada no pedido — é por ela que o Martz separa
+    // as campanhas que o status da Shopify junta num valor só
+    atributo_situacao: atributoSituacao ?? existing.atributo_situacao ?? null,
     updated_at: new Date().toISOString(),
   };
   _save(data);

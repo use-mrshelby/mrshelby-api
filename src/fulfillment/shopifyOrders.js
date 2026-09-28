@@ -104,20 +104,36 @@ async function getOrderContact(orderId) {
  * Retorna true se gravou, false se já estava com o mesmo valor.
  */
 const ATRIBUTO_STATUS = "status_entrega";
+// Situação detalhada, usada pelos grupos de WhatsApp do Martz. Separada do
+// status_entrega de propósito: mudar aquele quebraria a campanha que já roda.
+const ATRIBUTO_SITUACAO = "situacao_entrega";
 
-async function setStatusEntregaAttribute(orderId, valor) {
+/**
+ * Grava os atributos de entrega do pedido. Recebe { status_entrega, situacao_entrega }
+ * e escreve os dois numa única chamada — a Shopify substitui a lista inteira de
+ * note_attributes, então os demais atributos do pedido são preservados aqui.
+ * Retorna false quando nada mudou, para não gastar uma escrita à toa.
+ */
+async function setAtributosEntrega(orderId, valores) {
+  const desejados = Object.entries(valores).filter(([, v]) => v !== null && v !== undefined);
+  if (!desejados.length) return false;
+
   const { data } = await shopify.get(`/orders/${orderId}.json`, { fields: "id,note_attributes" });
   const atuais = data.order?.note_attributes ?? [];
 
-  const jaTem = atuais.find((a) => a.name === ATRIBUTO_STATUS);
-  if (jaTem && jaTem.value === valor) return false;
+  const mudou = desejados.some(([nome, valor]) => {
+    const jaTem = atuais.find((a) => a.name === nome);
+    return !jaTem || jaTem.value !== valor;
+  });
+  if (!mudou) return false;
 
+  const nomes = desejados.map(([nome]) => nome);
   const novos = atuais
-    .filter((a) => a.name !== ATRIBUTO_STATUS)
-    .concat([{ name: ATRIBUTO_STATUS, value: valor }]);
+    .filter((a) => !nomes.includes(a.name))
+    .concat(desejados.map(([name, value]) => ({ name, value })));
 
   await shopify.put(`/orders/${orderId}.json`, { order: { id: Number(orderId), note_attributes: novos } });
   return true;
 }
 
-module.exports = { findFulfillmentByTracking, getFulfillmentId, getOrderContact, setStatusEntregaAttribute };
+module.exports = { findFulfillmentByTracking, getFulfillmentId, getOrderContact, setAtributosEntrega };

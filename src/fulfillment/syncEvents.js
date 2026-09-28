@@ -15,9 +15,10 @@ const {
   findFulfillmentByTracking,
   getFulfillmentId,
   getOrderContact,
-  setStatusEntregaAttribute,
+  setAtributosEntrega,
 } = require("./shopifyOrders");
 const { avisosPendentes, enviarAviso } = require("../email/avisos");
+const { situacaoDoPedido } = require("./situacao");
 const shopify = require("../shopify/client");
 const logger = require("../logger");
 
@@ -170,7 +171,12 @@ async function processTracking(trackingNumber, rawStatus, evento) {
   const precisaAjustarLink = shopifyStatus === "ready_for_pickup" && !record?.link_ajustado;
   // O status também vai para os atributos do pedido: é de lá que o Martz
   // dispara a campanha de WhatsApp (ele não enxerga o status do fulfillment).
-  const precisaGravarAtributo = record?.atributo_status !== shopifyStatus;
+  // Junto vai a situação detalhada, que separa os casos que o status da
+  // Shopify junta — "confirme seu endereço" e "fique em casa" são o mesmo
+  // attempted_delivery, mas são campanhas diferentes.
+  const situacao = situacaoDoPedido({ shopifyStatus, rawStatus, evento });
+  const precisaGravarAtributo =
+    record?.atributo_status !== shopifyStatus || record?.atributo_situacao !== situacao;
 
   if (unchanged && !precisaLimpar && !avisos.length && !precisaAjustarLink && !precisaGravarAtributo) {
     logger.info("Status unchanged — skipping Shopify call", { trackingNumber, shopifyStatus });
@@ -227,11 +233,13 @@ async function processTracking(trackingNumber, rawStatus, evento) {
     }
 
     let atributoStatus = record?.atributo_status ?? null;
+    let atributoSituacao = record?.atributo_situacao ?? null;
     if (precisaGravarAtributo) {
       try {
-        await setStatusEntregaAttribute(orderId, shopifyStatus);
+        await setAtributosEntrega(orderId, { status_entrega: shopifyStatus, situacao_entrega: situacao });
         atributoStatus = shopifyStatus;
-        logger.info("Atributo status_entrega gravado no pedido", { trackingNumber, orderId, shopifyStatus });
+        atributoSituacao = situacao;
+        logger.info("Atributos de entrega gravados no pedido", { trackingNumber, orderId, shopifyStatus, situacao });
       } catch (err) {
         logger.warn("Não consegui gravar o atributo do pedido — tentaremos depois", {
           trackingNumber,
@@ -287,6 +295,7 @@ async function processTracking(trackingNumber, rawStatus, evento) {
       avisosEnviados,
       linkAjustado,
       atributoStatus,
+      atributoSituacao,
     });
     return "updated";
   } catch (err) {
