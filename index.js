@@ -32,4 +32,7 @@ if (process.env.AMOSTRAS_PARA) {
     .catch((err) => logger.error("Falha ao enviar amostras", { error: err.message }));
 }
 
+// Painel de entregas (só sobe se PAINEL_SENHA estiver definida).
+require("./src/painel/servidor").iniciar();
+
 scheduler.start();

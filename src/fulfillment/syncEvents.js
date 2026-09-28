@@ -248,6 +248,7 @@ async function processTracking(trackingNumber, rawStatus, evento) {
       upsertTracking({
         trackingNumber,
         lastStatus: shopifyStatus,
+        rawStatus,
         orderId,
         fulfillmentId,
         deliveredCleared: true,
@@ -278,6 +279,7 @@ async function processTracking(trackingNumber, rawStatus, evento) {
     upsertTracking({
       trackingNumber,
       lastStatus: shopifyStatus,
+      rawStatus,
       orderId,
       fulfillmentId,
       deliveredCleared: precisaLimpar || record?.delivered_cleared || false,

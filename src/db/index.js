@@ -30,11 +30,21 @@ function getTracking(trackingNumber) {
   return data[trackingNumber] ?? null;
 }
 
-function upsertTracking({ trackingNumber, lastStatus, orderId, fulfillmentId, deliveredCleared, avisosEnviados, linkAjustado, atributoStatus }) {
+// Todos os registros, para o painel de acompanhamento.
+function listarTrackings() {
+  return _load();
+}
+
+function upsertTracking({ trackingNumber, lastStatus, rawStatus, orderId, fulfillmentId, deliveredCleared, avisosEnviados, linkAjustado, atributoStatus }) {
   const data = _load();
   const existing = data[trackingNumber] ?? {};
+  const mudouStatus = existing.last_status !== lastStatus || existing.raw_status !== rawStatus;
   data[trackingNumber] = {
     last_status: lastStatus,
+    // texto original da transportadora e desde quando ele não muda — o painel
+    // usa os dois para mostrar o motivo e há quantos dias o pedido está parado
+    raw_status: rawStatus ?? existing.raw_status ?? null,
+    status_desde: mudouStatus ? new Date().toISOString() : existing.status_desde ?? new Date().toISOString(),
     shopify_order_id: orderId ?? existing.shopify_order_id ?? null,
     shopify_fulfillment_id: fulfillmentId ?? existing.shopify_fulfillment_id ?? null,
     // true = já conferimos que não sobrou evento "delivered" errado neste envio
@@ -65,4 +75,4 @@ function patchTracking(trackingNumber, campos) {
   _save(data);
 }
 
-module.exports = { getTracking, upsertTracking, patchTracking };
+module.exports = { getTracking, listarTrackings, upsertTracking, patchTracking };
