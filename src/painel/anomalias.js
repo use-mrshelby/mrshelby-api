@@ -14,6 +14,8 @@ const CACHE_MS = 5 * 60 * 1000;
 const cachePedidos = new Map(); // orderId -> { dados, buscadoEm }
 
 const DIAS_PARADO_ALERTA = 7;
+// Código sem retorno da transportadora só interessa enquanto o envio é recente.
+const DIAS_SEM_INFO_NO_PAINEL = 30;
 
 // Grupos do painel, em ordem de urgência.
 const GRUPOS = {
@@ -36,10 +38,14 @@ function classificar(registro) {
   const status = registro.last_status;
   const texto = String(registro.raw_status || "").toLowerCase();
   const diasParado = diasDesde(registro.status_desde);
+  // Registro antigo, de antes do painel: usa a data da última atualização.
+  const diasSemToque = diasParado ?? diasDesde(registro.updated_at);
 
   if (status === "delivered") return null;
 
   if (registro.ignorar_ate && new Date(registro.ignorar_ate) > new Date()) {
+    // Código sem retorno há muito tempo é envio velho: não ocupa o painel.
+    if (diasSemToque !== null && diasSemToque > DIAS_SEM_INFO_NO_PAINEL) return null;
     return { grupo: "sem_info", motivo: "Código não reconhecido pela transportadora" };
   }
 
@@ -72,8 +78,8 @@ function classificar(registro) {
   }
 
   // Em trânsito parado há muito tempo costuma ser objeto perdido no caminho.
-  if (diasParado !== null && diasParado >= DIAS_PARADO_ALERTA) {
-    return { grupo: "acompanhar", motivo: `Sem novidade há ${diasParado} dias` };
+  if (diasSemToque !== null && diasSemToque >= DIAS_PARADO_ALERTA) {
+    return { grupo: "acompanhar", motivo: `Sem novidade há ${diasSemToque} dias` };
   }
 
   if (/fiscal|retencao|retenção|atraso|imprevisto|travado/.test(texto)) {
@@ -129,7 +135,7 @@ async function listarAnomalias() {
       motivo: p.motivo,
       status: p.registro.last_status,
       texto_transportadora: p.registro.raw_status,
-      dias_parado: diasDesde(p.registro.status_desde),
+      dias_parado: diasDesde(p.registro.status_desde) ?? diasDesde(p.registro.updated_at),
       transportadora: /^[A-Z]{2}\d{9}[A-Z]{2}$/i.test(p.codigo) ? "Correios" : "Jadlog",
       rastreio_url: `https://www.mrshelby.com.br/pages/rastreio?tracking=${encodeURIComponent(p.codigo)}`,
       ...dados,
