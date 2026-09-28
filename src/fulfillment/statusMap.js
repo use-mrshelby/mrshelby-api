@@ -18,6 +18,9 @@ const STATUS_RULES = [
       "remetente", "devolvido", "devolucao", "prazo de retirada encerrado",
       "endereco incorreto", "recusado", "trafego interrompido", "travado",
       "extraviado", "avariado", "sinistro",
+      // Jadlog: o objeto sumiu do sistema dela, ou ela pede contato da loja.
+      // Nos dois casos o envio parou e alguém da equipe precisa agir.
+      "numero nao localizado", "contate seu fornecedor",
     ],
     shopify: "failure",
   },
@@ -64,6 +67,8 @@ const STATUS_RULES = [
       "entrega futura", "imprevisto", "temporal", "reagendad",
       // Correios: cliente pediu para retirar na unidade — ainda a caminho dela.
       "direcionado para entrega em unidade",
+      // Correios: objeto a caminho da unidade, ainda sem chegar.
+      "ainda nao chegou a unidade",
     ],
     shopify: "in_transit",
   },
