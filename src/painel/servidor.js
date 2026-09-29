@@ -13,14 +13,61 @@
  */
 
 const http = require("http");
+const crypto = require("crypto");
 const { listarAnomalias } = require("./anomalias");
-const { paginaHtml, arquivo } = require("./pagina");
+const { paginaHtml, loginHtml, arquivo } = require("./pagina");
 const { registrarAcao } = require("./tratativa");
 const logger = require("../logger");
 
 const SENHA = process.env.PAINEL_SENHA;
 const COOKIE = "painel_ok";
 const CORPO_MAXIMO = 8 * 1024;
+
+// Tentativas erradas antes de segurar o aparelho, e por quanto tempo.
+const TENTATIVAS_ANTES_DE_SEGURAR = 5;
+const SEGUNDOS_SEGURANDO = 60;
+
+/**
+ * O cookie guarda um resumo da senha, não a senha. Antes ela ia inteira no
+ * cookie e no endereço — quem abrisse o histórico do navegador ou as
+ * ferramentas de desenvolvedor lia ela em texto puro.
+ */
+function fichaDaSenha(senha) {
+  return crypto.createHash("sha256").update(`painel-mr-shelby:${senha}`).digest("hex");
+}
+
+const FICHA = SENHA ? fichaDaSenha(SENHA) : null;
+
+function senhaConfere(tentativa) {
+  if (!FICHA || typeof tentativa !== "string") return false;
+  // Comparação de tempo constante: resumos têm sempre o mesmo tamanho.
+  return crypto.timingSafeEqual(Buffer.from(fichaDaSenha(tentativa), "hex"), Buffer.from(FICHA, "hex"));
+}
+
+// Quem errou demais espera um pouco. Memória só, some quando o serviço reinicia.
+const tentativas = new Map();
+
+function quemPede(req) {
+  const encaminhado = req.headers["x-forwarded-for"];
+  return (encaminhado ? String(encaminhado).split(",")[0] : req.socket.remoteAddress || "?").trim();
+}
+
+function segurando(ip) {
+  const r = tentativas.get(ip);
+  if (!r || !r.ate) return 0;
+  const faltam = Math.ceil((r.ate - Date.now()) / 1000);
+  return faltam > 0 ? faltam : 0;
+}
+
+function registrarErro(ip) {
+  const r = tentativas.get(ip) || { erros: 0, ate: 0 };
+  r.erros += 1;
+  if (r.erros >= TENTATIVAS_ANTES_DE_SEGURAR) {
+    r.ate = Date.now() + SEGUNDOS_SEGURANDO * 1000;
+    r.erros = 0;
+  }
+  tentativas.set(ip, r);
+}
 
 const ESTATICOS = {
   "/painel.css": { nome: "painel.css", tipo: "text/css; charset=utf-8" },
@@ -29,9 +76,17 @@ const ESTATICOS = {
 
 function autorizado(req, url) {
   if (!SENHA) return false;
-  if (url.searchParams.get("k") === SENHA) return true;
+  // ?k=SENHA continua valendo: os links antigos e os atalhos de quem já usa
+  // não podem parar de funcionar de uma hora para outra.
+  if (senhaConfere(url.searchParams.get("k"))) return true;
   const cookies = req.headers.cookie || "";
-  return cookies.split(";").some((c) => c.trim() === `${COOKIE}=${SENHA}`);
+  return cookies.split(";").some((c) => c.trim() === `${COOKIE}=${FICHA}`);
+}
+
+/** O cookie só vai com Secure quando a conexão é HTTPS — no Railway, sempre. */
+function cookieDeSessao(req) {
+  const https = String(req.headers["x-forwarded-proto"] || "").includes("https");
+  return `${COOKIE}=${FICHA}; Path=/; Max-Age=2592000; HttpOnly; SameSite=Lax${https ? "; Secure" : ""}`;
 }
 
 function responder(res, status, corpo, headers = {}) {
@@ -46,8 +101,8 @@ function json(res, status, objeto, headers = {}) {
   });
 }
 
-/** Lê o corpo da requisição, com teto — o painel só manda objetos pequenos. */
-function lerCorpo(req) {
+/** Lê o corpo da requisição, com teto — o painel só manda coisas pequenas. */
+function lerTexto(req) {
   return new Promise((resolve, reject) => {
     let bruto = "";
     req.on("data", (pedaco) => {
@@ -57,15 +112,19 @@ function lerCorpo(req) {
         req.destroy();
       }
     });
-    req.on("end", () => {
-      try {
-        resolve(bruto ? JSON.parse(bruto) : {});
-      } catch (err) {
-        reject(new Error("corpo não é JSON válido"));
-      }
-    });
+    req.on("end", () => resolve(bruto));
     req.on("error", reject);
   });
+}
+
+async function lerCorpo(req) {
+  const bruto = await lerTexto(req);
+  if (!bruto) return {};
+  try {
+    return JSON.parse(bruto);
+  } catch (err) {
+    throw new Error("corpo não é JSON válido");
+  }
 }
 
 function iniciar() {
@@ -83,14 +142,50 @@ function iniciar() {
       return responder(res, 200, "ok", { "Content-Type": "text/plain; charset=utf-8" });
     }
 
-    if (!autorizado(req, url)) {
-      return responder(res, 401, "Acesso restrito. Abra o painel com o link completo, que inclui a senha.", {
-        "Content-Type": "text/plain; charset=utf-8",
-      });
+    // Recebe o formulário da tela de entrada.
+    if (url.pathname === "/entrar") {
+      if (req.method !== "POST") return responder(res, 303, "", { Location: "/" });
+
+      const ip = quemPede(req);
+      const faltam = segurando(ip);
+      if (faltam) {
+        return responder(res, 429, loginHtml({ erro: `Muitas tentativas. Tente de novo em ${faltam} segundos.` }), {
+          "Content-Type": "text/html; charset=utf-8",
+        });
+      }
+
+      let enviada = "";
+      try {
+        const bruto = await lerTexto(req);
+        enviada = new URLSearchParams(bruto).get("senha") || "";
+      } catch (err) {
+        enviada = "";
+      }
+
+      if (!senhaConfere(enviada)) {
+        registrarErro(ip);
+        logger.warn("Painel: senha errada na tela de entrada", { ip });
+        return responder(res, 401, loginHtml({ erro: "Senha incorreta." }), {
+          "Content-Type": "text/html; charset=utf-8",
+        });
+      }
+
+      tentativas.delete(ip);
+      return responder(res, 303, "", { Location: "/", "Set-Cookie": cookieDeSessao(req) });
     }
 
-    // Guarda a senha no aparelho para os próximos acessos (30 dias).
-    const cookie = `${COOKIE}=${SENHA}; Path=/; Max-Age=2592000; HttpOnly; SameSite=Lax`;
+    if (!autorizado(req, url)) {
+      // Página pede a senha em vez de devolver um texto seco: assim dá para
+      // abrir o painel em qualquer aparelho sem carregar a senha na URL.
+      const pedePagina = String(req.headers.accept || "").includes("text/html");
+      if (pedePagina) {
+        return responder(res, 401, loginHtml(), { "Content-Type": "text/html; charset=utf-8" });
+      }
+      return responder(res, 401, "Acesso restrito.", { "Content-Type": "text/plain; charset=utf-8" });
+    }
+
+    // Guarda a sessão no aparelho para os próximos acessos (30 dias).
+    const cookie = cookieDeSessao(req);
 
     const estatico = ESTATICOS[url.pathname];
     if (estatico) {
