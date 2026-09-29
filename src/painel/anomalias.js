@@ -213,11 +213,17 @@ function mensagemWhatsapp({ grupo, motivo, cliente, pedido, codigo, transportado
   return `${ola} Aqui é da Mr. Shelby.\n\n${ficha}\n\n${corpo}`;
 }
 
-/** Link do WhatsApp com a mensagem já escrita, no formato usado nos e-mails. */
-function linkWhatsapp(telefone, mensagem) {
+/** Número no padrão internacional, pronto para colar na busca do WhatsApp. */
+function numeroWhatsapp(telefone) {
   const digitos = String(telefone || "").replace(/\D/g, "");
   if (digitos.length < 10) return null;
-  const numero = digitos.length <= 11 ? `55${digitos}` : digitos;
+  return digitos.length <= 11 ? `55${digitos}` : digitos;
+}
+
+/** Link do WhatsApp com a mensagem já escrita, no formato usado nos e-mails. */
+function linkWhatsapp(telefone, mensagem) {
+  const numero = numeroWhatsapp(telefone);
+  if (!numero) return null;
   return `https://api.whatsapp.com/send/?phone=${numero}&text=${encodeURIComponent(mensagem)}&type=phone_number&app_absent=0`;
 }
 
@@ -317,6 +323,10 @@ async function listarAnomalias() {
     // O operador clica e o WhatsApp já abre com o texto do problema escrito.
     item.mensagem_whatsapp = mensagemWhatsapp(item);
     item.whatsapp_url = linkWhatsapp(item.telefone, item.mensagem_whatsapp);
+    // Número pronto para colar na busca do WhatsApp que o operador já tem
+    // aberto, em vez de abrir uma aba nova a cada pedido.
+    const zap = numeroWhatsapp(item.telefone);
+    item.telefone_zap = zap ? `+${zap}` : null;
 
     itens.push(item);
   }

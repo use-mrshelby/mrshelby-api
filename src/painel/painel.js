@@ -139,8 +139,19 @@
     var cor = corDoCard(item);
     var acoes = "";
 
+    // Copiar em vez de abrir: quem atende já tem o WhatsApp aberto numa aba,
+    // e abrir wa.me a cada pedido enche o navegador de abas.
+    if (item.telefone_zap) {
+      acoes += '<button class="copiar principal" data-copia="' + esc(item.telefone_zap) + '"'
+        + ' data-feito="Número copiado">Copiar número</button>';
+    }
+    if (item.mensagem_whatsapp) {
+      acoes += '<button class="copiar principal" data-copia="' + esc(item.mensagem_whatsapp) + '"'
+        + ' data-feito="Mensagem copiada">Copiar mensagem</button>';
+    }
     if (item.whatsapp_url) {
-      acoes += '<a class="principal" href="' + esc(item.whatsapp_url) + '" target="_blank" rel="noopener">WhatsApp</a>';
+      acoes += '<a href="' + esc(item.whatsapp_url) + '" target="_blank" rel="noopener"'
+        + ' title="Abre uma aba nova com a conversa">Abrir</a>';
     }
     if (item.email) acoes += '<a href="mailto:' + esc(item.email) + '">E-mail</a>';
     acoes += '<a href="' + esc(item.rastreio_url) + '" target="_blank" rel="noopener">Rastreio</a>';
@@ -285,6 +296,48 @@
 
     document.querySelectorAll("button.adiar").forEach(function (b) {
       b.addEventListener("click", function () { adiar(b.dataset.codigo); });
+    });
+
+    document.querySelectorAll("button.copiar").forEach(function (b) {
+      b.addEventListener("click", function () { copiar(b); });
+    });
+  }
+
+  /* ── Copiar ────────────────────────────────────────────────────────── */
+
+  /* navigator.clipboard só existe em conexão segura e pode ser recusado pelo
+     navegador; o textarea escondido cobre esses casos. */
+  function paraAreaDeTransferencia(texto) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(texto);
+    }
+    return new Promise(function (ok, falhou) {
+      var campo = document.createElement("textarea");
+      campo.value = texto;
+      campo.setAttribute("readonly", "");
+      campo.style.position = "fixed";
+      campo.style.opacity = "0";
+      document.body.appendChild(campo);
+      campo.select();
+      var deu = false;
+      try { deu = document.execCommand("copy"); } catch (e) { deu = false; }
+      document.body.removeChild(campo);
+      deu ? ok() : falhou(new Error("o navegador não deixou copiar"));
+    });
+  }
+
+  function copiar(botao) {
+    var original = botao.textContent;
+    paraAreaDeTransferencia(botao.dataset.copia).then(function () {
+      botao.textContent = "✓ " + botao.dataset.feito;
+      botao.classList.add("copiado");
+      setTimeout(function () {
+        botao.textContent = original;
+        botao.classList.remove("copiado");
+      }, 1800);
+    }).catch(function () {
+      // Sem área de transferência, mostra o texto para copiar na mão.
+      window.prompt("Copie com Ctrl+C:", botao.dataset.copia);
     });
   }
 

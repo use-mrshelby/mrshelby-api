@@ -320,13 +320,19 @@ details.historico pre {
   cursor: pointer;
 }
 .acoes a:hover, .acoes button:hover { background: var(--surface-2); }
-.acoes a.principal {
+.acoes .principal {
   background: #25d366;
   border-color: #25d366;
   color: #08130c;
   font-weight: 640;
 }
-.acoes a.principal:hover { filter: brightness(1.06); }
+.acoes .principal:hover { filter: brightness(1.06); }
+
+.acoes .copiado {
+  background: var(--surface);
+  border-color: #25d366;
+  color: #1a9e4b;
+}
 
 .mover {
   font: inherit;
