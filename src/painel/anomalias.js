@@ -20,15 +20,26 @@ const DIAS_SEM_INFO_NO_PAINEL = 30;
 // A Jadlog dá 10 dias corridos para a loja mandar informação complementar
 // num caso de endereço; passado o prazo, devolve o objeto.
 const DIAS_ATE_DEVOLVER_ENDERECO = 10;
+// A partir daqui o caso de retirada volta da Martz para o painel: mensagem
+// automática já não resolve, precisa de telefonema. O 3 vale 2 dias corridos
+// de sobra — diasAte conta o dia de hoje, então "vence amanhã" já dá 2.
+const DIAS_PARA_PRAZO_CRITICO = 3;
 
 // Situações que o painel reconhece. A chave é estável (o título muda sem
-// quebrar o filtro) e "acionavel" diz se a loja consegue mudar o resultado:
-// tentativa de entrega e retenção seguem sozinhas, não adianta a equipe
-// olhar — por isso entram desligadas no filtro.
+// quebrar o filtro).
+//
+// "acionavel" divide o trabalho com o Martz: quem só precisa ser LEMBRADO
+// (retirada, tentativa, retenção) é campanha automática e entra desligado;
+// quem precisa RESPONDER alguma coisa — mandar o endereço, escolher entre
+// reenvio e estorno — fica ligado, porque exige gente.
+//
+// A retirada é a exceção que passa o bastão de volta: enquanto dá tempo, o
+// Martz cobra sozinho; nos 2 dias finais, só telefonema salva e o caso
+// reaparece no painel como "prazo acabando".
 const SITUACOES = [
   { chave: "endereco", titulo: "Endereço não localizado", cor: "#e5484d", acionavel: true },
   { chave: "retirada_prazo", titulo: "Prazo de retirada acabando", cor: "#e5484d", acionavel: true },
-  { chave: "retirada", titulo: "Aguardando retirada", cor: "#3e63dd", acionavel: true },
+  { chave: "retirada", titulo: "Aguardando retirada", cor: "#3e63dd", acionavel: false },
   { chave: "devolucao", titulo: "Voltando para a loja", cor: "#8e4ec6", acionavel: true },
   { chave: "extraviado", titulo: "Extraviado ou avariado", cor: "#e5484d", acionavel: true },
   { chave: "falha", titulo: "Entrega com falha", cor: "#e5484d", acionavel: true },
@@ -133,7 +144,12 @@ function classificar(registro) {
   }
 
   if (status === "ready_for_pickup") {
-    const limite = registro.avisos_enviados && registro.avisos_enviados.prazo_final;
+    // Conta pela data limite dos Correios. Antes olhava só se o e-mail de
+    // prazo tinha saído — se ele falhasse, o caso nunca virava urgente.
+    const faltam = registro.prazo_retirada ? diasAte(registro.prazo_retirada) : null;
+    const limite =
+      (faltam !== null && faltam <= DIAS_PARA_PRAZO_CRITICO) ||
+      (registro.avisos_enviados && registro.avisos_enviados.prazo_final);
     return {
       grupo: limite ? "urgente" : "acompanhar",
       chave: limite ? "retirada_prazo" : "retirada",
