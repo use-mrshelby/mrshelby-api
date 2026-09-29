@@ -259,7 +259,13 @@ async function listarAnomalias() {
       etapa: etapaDe(p.registro),
       tratativa: historicoDe(p.registro).slice(-5),
       lembrar_ate: (p.registro.tratativa && p.registro.tratativa.lembrar_ate) || null,
-      dias_parado: diasDesde(p.registro.status_desde) ?? diasDesde(p.registro.updated_at),
+      // Conta pela data que a transportadora registrou. status_desde é quando
+      // o nosso ciclo viu a mudança: se corrigimos um mapeamento, ele
+      // reinicia e o prazo passa a mentir para mais.
+      dias_parado:
+        diasDesde(p.registro.evento_em) ??
+        diasDesde(p.registro.status_desde) ??
+        diasDesde(p.registro.updated_at),
       transportadora: /^[A-Z]{2}\d{9}[A-Z]{2}$/i.test(p.codigo) ? "Correios" : "Jadlog",
       rastreio_url: `https://www.mrshelby.com.br/pages/rastreio?tracking=${encodeURIComponent(p.codigo)}`,
       ...dados,

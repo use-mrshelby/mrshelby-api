@@ -62,7 +62,9 @@ async function getJadlogStatus(trackingNumber) {
   const tracking = response.data?.tracking;
   if (!tracking) return null;
   const status = tracking.status ?? tracking.situacao ?? tracking.descricao ?? null;
-  return status ? { status, evento: (tracking.eventos && tracking.eventos[0]) || null } : null;
+  // Os eventos vêm do mais antigo para o mais novo: o que vale é o último.
+  const eventos = tracking.eventos || [];
+  return status ? { status, evento: eventos[eventos.length - 1] || null } : null;
 }
 
 // ── Busca tracking numbers dos pedidos enviados na Shopify ────────────────────

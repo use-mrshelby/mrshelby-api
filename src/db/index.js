@@ -35,7 +35,7 @@ function listarTrackings() {
   return _load();
 }
 
-function upsertTracking({ trackingNumber, lastStatus, rawStatus, orderId, fulfillmentId, deliveredCleared, avisosEnviados, linkAjustado, atributoStatus, atributoSituacao, prazoRetirada }) {
+function upsertTracking({ trackingNumber, lastStatus, rawStatus, orderId, fulfillmentId, deliveredCleared, avisosEnviados, linkAjustado, atributoStatus, atributoSituacao, prazoRetirada, eventoEm }) {
   const data = _load();
   const existing = data[trackingNumber] ?? {};
   const mudouStatus = existing.last_status !== lastStatus || existing.raw_status !== rawStatus;
@@ -65,6 +65,10 @@ function upsertTracking({ trackingNumber, lastStatus, rawStatus, orderId, fulfil
     // data limite de retirada na agência (só os Correios informam). O painel
     // mostra quantos dias faltam; sem isso ele não sabe o prazo real.
     prazo_retirada: prazoRetirada ?? existing.prazo_retirada ?? null,
+    // quando a TRANSPORTADORA registrou o último evento. Diferente de
+    // status_desde, que é quando o nosso sistema viu a mudança: se a gente
+    // corrige um mapeamento, status_desde reinicia e o prazo do painel mente.
+    evento_em: eventoEm ?? existing.evento_em ?? null,
     updated_at: new Date().toISOString(),
   };
   _save(data);

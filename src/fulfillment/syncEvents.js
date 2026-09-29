@@ -22,6 +22,19 @@ const { situacaoDoPedido } = require("./situacao");
 const shopify = require("../shopify/client");
 const logger = require("../logger");
 
+/**
+ * Quando a transportadora registrou o evento. Correios usam dtHrCriado,
+ * a Jadlog usa data ("2026-09-25 08:13:17"). É essa data que vale para
+ * contar prazo — não a hora em que o nosso ciclo viu a mudança.
+ */
+function dataDoEvento(evento) {
+  if (!evento) return null;
+  const bruta = evento.dtHrCriado || evento.data || null;
+  if (!bruta) return null;
+  const d = new Date(String(bruta).replace(" ", "T"));
+  return isNaN(d) ? null : d.toISOString();
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -178,7 +191,16 @@ async function processTracking(trackingNumber, rawStatus, evento) {
   const precisaGravarAtributo =
     record?.atributo_status !== shopifyStatus || record?.atributo_situacao !== situacao;
 
-  if (unchanged && !precisaLimpar && !avisos.length && !precisaAjustarLink && !precisaGravarAtributo) {
+  // O painel conta prazo pela data do evento da transportadora e pela data
+  // limite de retirada. Quem está parado há dias nunca era reprocessado e
+  // ficava sem esses dois dados — por isso eles também furam o "unchanged".
+  const eventoEm = dataDoEvento(evento);
+  const prazoRetirada = (evento && evento.dtLimiteRetirada) || null;
+  const precisaRegistrarPrazo =
+    (eventoEm && record?.evento_em !== eventoEm) ||
+    (prazoRetirada && record?.prazo_retirada !== prazoRetirada);
+
+  if (unchanged && !precisaLimpar && !avisos.length && !precisaAjustarLink && !precisaGravarAtributo && !precisaRegistrarPrazo) {
     logger.info("Status unchanged — skipping Shopify call", { trackingNumber, shopifyStatus });
     return "unchanged";
   }
@@ -264,6 +286,9 @@ async function processTracking(trackingNumber, rawStatus, evento) {
         avisosEnviados,
         linkAjustado,
         atributoStatus,
+        atributoSituacao,
+        prazoRetirada,
+        eventoEm,
       });
       logger.info("Status unchanged — limpeza e/ou avisos aplicados", { trackingNumber, shopifyStatus });
       return "unchanged";
@@ -296,7 +321,8 @@ async function processTracking(trackingNumber, rawStatus, evento) {
       linkAjustado,
       atributoStatus,
       atributoSituacao,
-      prazoRetirada: (evento && evento.dtLimiteRetirada) || null,
+      prazoRetirada,
+      eventoEm,
     });
     return "updated";
   } catch (err) {
