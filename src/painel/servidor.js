@@ -5,8 +5,9 @@
  *   PAINEL_SENHA  obrigatória. Sem ela o painel não sobe.
  *   PORT          porta (o Railway define sozinho).
  *
- * Acesso: https://<dominio>/?k=SENHA — a senha fica guardada num cookie, então
- * só precisa ser informada na primeira vez em cada aparelho.
+ * Acesso: abra o domínio e digite a PAINEL_SENHA na tela de entrada. É a mesma
+ * senha para todo mundo; cada aparelho informa uma vez e fica logado. O antigo
+ * https://<dominio>/?k=SENHA continua valendo.
  *
  * Rotas: /saude · / e /painel (página) · painel.css e painel.js (estáticos)
  *        /dados (GET, lista) · /acao (POST, registra a tratativa da equipe)
@@ -26,6 +27,12 @@ const CORPO_MAXIMO = 8 * 1024;
 // Tentativas erradas antes de segurar o aparelho, e por quanto tempo.
 const TENTATIVAS_ANTES_DE_SEGURAR = 5;
 const SEGUNDOS_SEGURANDO = 60;
+
+// Quanto tempo o aparelho fica logado. Não dá para ser "para sempre": o
+// Chrome e o Edge cortam qualquer cookie em 400 dias, então esse é o teto
+// real. Para tirar o acesso de alguém antes disso, troque a PAINEL_SENHA —
+// isso derruba a sessão de todo mundo de uma vez.
+const DIAS_LOGADO = 400;
 
 /**
  * O cookie guarda um resumo da senha, não a senha. Antes ela ia inteira no
@@ -86,7 +93,8 @@ function autorizado(req, url) {
 /** O cookie só vai com Secure quando a conexão é HTTPS — no Railway, sempre. */
 function cookieDeSessao(req) {
   const https = String(req.headers["x-forwarded-proto"] || "").includes("https");
-  return `${COOKIE}=${FICHA}; Path=/; Max-Age=2592000; HttpOnly; SameSite=Lax${https ? "; Secure" : ""}`;
+  const segundos = DIAS_LOGADO * 24 * 3600;
+  return `${COOKIE}=${FICHA}; Path=/; Max-Age=${segundos}; HttpOnly; SameSite=Lax${https ? "; Secure" : ""}`;
 }
 
 function responder(res, status, corpo, headers = {}) {
@@ -184,7 +192,7 @@ function iniciar() {
       return responder(res, 401, "Acesso restrito.", { "Content-Type": "text/plain; charset=utf-8" });
     }
 
-    // Guarda a sessão no aparelho para os próximos acessos (30 dias).
+    // Guarda a sessão no aparelho para os próximos acessos.
     const cookie = cookieDeSessao(req);
 
     const estatico = ESTATICOS[url.pathname];
