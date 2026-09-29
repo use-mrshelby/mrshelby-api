@@ -35,7 +35,7 @@ function listarTrackings() {
   return _load();
 }
 
-function upsertTracking({ trackingNumber, lastStatus, rawStatus, orderId, fulfillmentId, deliveredCleared, avisosEnviados, linkAjustado, atributoStatus, atributoSituacao }) {
+function upsertTracking({ trackingNumber, lastStatus, rawStatus, orderId, fulfillmentId, deliveredCleared, avisosEnviados, linkAjustado, atributoStatus, atributoSituacao, prazoRetirada }) {
   const data = _load();
   const existing = data[trackingNumber] ?? {};
   const mudouStatus = existing.last_status !== lastStatus || existing.raw_status !== rawStatus;
@@ -59,6 +59,12 @@ function upsertTracking({ trackingNumber, lastStatus, rawStatus, orderId, fulfil
     // situação detalhada já gravada no pedido — é por ela que o Martz separa
     // as campanhas que o status da Shopify junta num valor só
     atributo_situacao: atributoSituacao ?? existing.atributo_situacao ?? null,
+    // o que a equipe já fez com o caso no painel (etapa, histórico, adiamento).
+    // Quem mexe nisso é o painel, não o ciclo — aqui só preservamos.
+    tratativa: existing.tratativa ?? null,
+    // data limite de retirada na agência (só os Correios informam). O painel
+    // mostra quantos dias faltam; sem isso ele não sabe o prazo real.
+    prazo_retirada: prazoRetirada ?? existing.prazo_retirada ?? null,
     updated_at: new Date().toISOString(),
   };
   _save(data);

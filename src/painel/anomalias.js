@@ -9,6 +9,7 @@
 const { listarTrackings } = require("../db");
 const shopify = require("../shopify/client");
 const logger = require("../logger");
+const { ETAPAS, etapaDe, adiado, resolvidoEEscondido, historicoDe } = require("./tratativa");
 
 const CACHE_MS = 5 * 60 * 1000;
 const cachePedidos = new Map(); // orderId -> { dados, buscadoEm }
@@ -31,6 +32,13 @@ const GRUPOS = {
 // Todos os jeitos que Correios e Jadlog escrevem o mesmo problema: a entrega
 // não saiu porque o endereço não foi localizado ou precisa de confirmação.
 const ENDERECO = /endereco|endereço|reitineracao|numero nao localizado|contate seu fornecedor/;
+
+/** Dias que faltam até uma data (0 = hoje ou já passou). */
+function diasAte(iso) {
+  if (!iso) return null;
+  const limite = new Date(String(iso).substring(0, 10) + "T23:59:59");
+  return Math.max(Math.ceil((limite - new Date()) / 86400000), 0);
+}
 
 function diasDesde(iso) {
   if (!iso) return null;
@@ -223,6 +231,8 @@ async function listarAnomalias() {
   const pendentes = [];
 
   for (const [codigo, registro] of Object.entries(registros)) {
+    // Adiado pela equipe, ou resolvido há mais de um dia: fora da fila.
+    if (adiado(registro) || resolvidoEEscondido(registro)) continue;
     const classificacao = classificar(registro);
     if (classificacao) pendentes.push({ codigo, registro, ...classificacao });
   }
@@ -245,17 +255,34 @@ async function listarAnomalias() {
       status: p.registro.last_status,
       texto_transportadora: p.registro.raw_status,
       contatos: historicoDeContato(p.registro),
+      // trabalho da equipe: em que coluna o caso está e o que já foi feito
+      etapa: etapaDe(p.registro),
+      tratativa: historicoDe(p.registro).slice(-5),
+      lembrar_ate: (p.registro.tratativa && p.registro.tratativa.lembrar_ate) || null,
       dias_parado: diasDesde(p.registro.status_desde) ?? diasDesde(p.registro.updated_at),
       transportadora: /^[A-Z]{2}\d{9}[A-Z]{2}$/i.test(p.codigo) ? "Correios" : "Jadlog",
       rastreio_url: `https://www.mrshelby.com.br/pages/rastreio?tracking=${encodeURIComponent(p.codigo)}`,
       ...dados,
     };
 
-    // Caso de endereço tem relógio: sem informação complementar, a
-    // transportadora devolve. Mostrar quantos dias restam muda a prioridade.
-    if (item.motivo === "Endereço não localizado" && item.dias_parado !== null) {
-      item.dias_ate_devolver = Math.max(DIAS_ATE_DEVOLVER_ENDERECO - item.dias_parado, 0);
+    // Os dois tipos de prazo que existem, num campo só. O da agência vem dos
+    // Correios; o de endereço é a regra dos 10 dias da Jadlog contada a partir
+    // do dia em que o objeto parou.
+    if (p.registro.prazo_retirada && String(p.registro.last_status) === "ready_for_pickup") {
+      item.prazo = {
+        tipo: "retirada",
+        data: String(p.registro.prazo_retirada).substring(0, 10),
+        dias: diasAte(p.registro.prazo_retirada),
+      };
+    } else if (item.motivo === "Endereço não localizado" && item.dias_parado !== null) {
+      item.prazo = {
+        tipo: "endereco",
+        data: null,
+        dias: Math.max(DIAS_ATE_DEVOLVER_ENDERECO - item.dias_parado, 0),
+      };
     }
+    // Mantido para a mensagem de WhatsApp, que já cita esse número.
+    item.dias_ate_devolver = item.prazo && item.prazo.tipo === "endereco" ? item.prazo.dias : undefined;
 
     // O operador clica e o WhatsApp já abre com o texto do problema escrito.
     item.mensagem_whatsapp = mensagemWhatsapp(item);
@@ -266,6 +293,13 @@ async function listarAnomalias() {
 
   const ordem = ["urgente", "acompanhar", "devolucao", "sem_info"];
   itens.sort((a, b) => {
+    // Quem tem prazo vem antes, do mais curto para o mais longo. Depois o
+    // grupo, e por fim o que está parado há mais tempo.
+    const pa = a.prazo ? a.prazo.dias : null;
+    const pb = b.prazo ? b.prazo.dias : null;
+    if (pa !== null && pb !== null && pa !== pb) return pa - pb;
+    if (pa !== null && pb === null) return -1;
+    if (pa === null && pb !== null) return 1;
     const g = ordem.indexOf(a.grupo) - ordem.indexOf(b.grupo);
     return g !== 0 ? g : (b.dias_parado ?? 0) - (a.dias_parado ?? 0);
   });
@@ -274,6 +308,7 @@ async function listarAnomalias() {
     atualizado_em: new Date().toISOString(),
     total_acompanhados: Object.keys(registros).length,
     grupos: GRUPOS,
+    etapas: ETAPAS,
     itens,
   };
 }

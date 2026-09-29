@@ -1,7 +1,19 @@
 /**
- * HTML do painel. Uma página só, sem dependências externas: ela busca os dados
- * em /dados e se atualiza sozinha a cada minuto.
+ * Casca HTML do painel. O estilo e o script são arquivos próprios servidos
+ * pelo servidor do painel — assim dá para escrevê-los como CSS e JS de
+ * verdade, em vez de texto espremido dentro de uma string.
  */
+
+const fs = require("fs");
+const path = require("path");
+
+// Lidos uma vez e guardados: o conteúdo só muda quando o serviço sobe de novo.
+const cache = {};
+
+function arquivo(nome) {
+  if (!cache[nome]) cache[nome] = fs.readFileSync(path.join(__dirname, nome), "utf8");
+  return cache[nome];
+}
 
 function paginaHtml() {
   return `<!doctype html>
@@ -10,36 +22,8 @@ function paginaHtml() {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Entregas · Mr. Shelby</title>
-<style>
-  :root { color-scheme: light dark; --bg:#f5f5f5; --card:#fff; --txt:#111; --fraco:#777; --linha:#e5e5e5; }
-  @media (prefers-color-scheme: dark) { :root { --bg:#16161a; --card:#1f1f24; --txt:#f2f2f2; --fraco:#9a9a9a; --linha:#33333a; } }
-  * { box-sizing:border-box; }
-  body { margin:0; background:var(--bg); color:var(--txt); font:15px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; padding:16px; }
-  header { max-width:1100px; margin:0 auto 18px; display:flex; flex-wrap:wrap; gap:12px; align-items:baseline; justify-content:space-between; }
-  h1 { font-size:20px; margin:0; font-weight:700; }
-  .sub { color:var(--fraco); font-size:13px; }
-  main { max-width:1100px; margin:0 auto; }
-  .grupo { margin:0 0 26px; }
-  .grupo h2 { font-size:15px; margin:0 0 10px; display:flex; align-items:center; gap:8px; }
-  .pill { font-size:12px; font-weight:700; color:#fff; border-radius:20px; padding:2px 10px; }
-  .card { background:var(--card); border:1px solid var(--linha); border-radius:10px; padding:14px 16px; margin:0 0 10px; }
-  .linha1 { display:flex; flex-wrap:wrap; gap:8px; align-items:baseline; justify-content:space-between; }
-  .pedido { font-weight:700; }
-  .motivo { font-weight:600; }
-  .meta { color:var(--fraco); font-size:13px; margin-top:4px; }
-  .contato { margin-top:8px; font-size:13px; border-left:3px solid var(--linha); padding:2px 0 2px 10px; }
-  .contato b { font-weight:600; }
-  .contato .nenhum { color:var(--fraco); }
-  .previa { margin-top:8px; font-size:13px; }
-  .previa summary { cursor:pointer; color:var(--fraco); }
-  .previa pre { white-space:pre-wrap; font:inherit; background:var(--bg); border:1px solid var(--linha); border-radius:6px; padding:10px; margin:8px 0 0; }
-  .acoes { margin-top:10px; display:flex; flex-wrap:wrap; gap:8px; }
-  .acoes a { font-size:13px; text-decoration:none; border:1px solid var(--linha); border-radius:6px; padding:6px 10px; color:var(--txt); }
-  .acoes a:hover { border-color:var(--fraco); }
-  .vazio { color:var(--fraco); }
-  .dias { font-variant-numeric:tabular-nums; }
-  .prazo { color:#c0392b; }
-</style>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="painel.css">
 </head>
 <body>
 <header>
@@ -47,63 +31,15 @@ function paginaHtml() {
     <h1>Entregas que precisam de atenção</h1>
     <div class="sub" id="resumo">Carregando…</div>
   </div>
-  <div class="sub" id="atualizado"></div>
+  <div class="cabecalho-dir">
+    <span class="resumo-urgente" id="urgente" style="display:none"></span>
+    <span class="sub" id="atualizado"></span>
+  </div>
 </header>
-<main id="conteudo"></main>
-<script>
-const fmt = n => n === null || n === undefined ? '—' : n;
-const escapar = t => String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-const dataHora = iso => { try { return new Date(iso).toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }); } catch (e) { return iso; } };
-function card(i) {
-  return \`<div class="card">
-    <div class="linha1">
-      <span><span class="pedido">\${fmt(i.pedido) || i.codigo}</span> · \${fmt(i.cliente)}</span>
-      <span class="motivo">\${i.motivo}</span>
-    </div>
-    <div class="meta">
-      \${i.transportadora} · \${i.codigo}\${i.cidade ? ' · ' + i.cidade : ''}
-      \${i.dias_parado !== null ? ' · <span class="dias">parado há ' + i.dias_parado + ' dia(s)</span>' : ''}
-      \${i.dias_ate_devolver !== undefined && i.dias_ate_devolver !== null ? ' · <b class="prazo">' + (i.dias_ate_devolver === 0 ? 'prazo esgotado — volta a qualquer momento' : 'volta em ' + i.dias_ate_devolver + ' dia(s) se o cliente não responder') + '</b>' : ''}
-      \${i.texto_transportadora ? '<br>' + i.texto_transportadora : ''}
-    </div>
-    <div class="contato">
-      \${(i.contatos && i.contatos.length)
-        ? '<b>Já comunicado:</b><br>' + i.contatos.map(c => c.rotulo + ' — ' + dataHora(c.quando) + (c.dias === 0 ? ' (hoje)' : c.dias === 1 ? ' (ontem)' : ' (há ' + c.dias + ' dias)')).join('<br>')
-        : '<span class="nenhum">Nenhuma comunicação automática enviada para este pedido.</span>'}
-    </div>
-    \${i.mensagem_whatsapp ? '<details class="previa"><summary>Ver a mensagem que vai ser enviada</summary><pre>' + escapar(i.mensagem_whatsapp) + '</pre></details>' : ''}
-    <div class="acoes">
-      \${i.whatsapp_url ? '<a href="'+i.whatsapp_url+'" target="_blank">WhatsApp com mensagem pronta</a>' : ''}
-      \${i.email ? '<a href="mailto:'+i.email+'">E-mail</a>' : ''}
-      <a href="\${i.rastreio_url}" target="_blank">Rastreio</a>
-      \${i.admin_url ? '<a href="'+i.admin_url+'" target="_blank">Pedido</a>' : ''}
-    </div>
-  </div>\`;
-}
-async function carregar() {
-  try {
-    const r = await fetch('dados' + location.search, { credentials:'same-origin' });
-    if (!r.ok) throw new Error('resposta ' + r.status);
-    const d = await r.json();
-    const porGrupo = {};
-    d.itens.forEach(i => { (porGrupo[i.grupo] = porGrupo[i.grupo] || []).push(i); });
-    const partes = Object.entries(d.grupos).map(([chave, g]) => {
-      const itens = porGrupo[chave] || [];
-      if (!itens.length) return '';
-      return '<section class="grupo"><h2><span class="pill" style="background:'+g.cor+'">'+itens.length+'</span>'+g.titulo+'</h2>' + itens.map(card).join('') + '</section>';
-    });
-    document.getElementById('conteudo').innerHTML = partes.join('') || '<p class="vazio">Nenhum pedido precisando de atenção agora.</p>';
-    document.getElementById('resumo').textContent = d.itens.length + ' de ' + d.total_acompanhados + ' envios acompanhados';
-    document.getElementById('atualizado').textContent = 'Atualizado às ' + new Date(d.atualizado_em).toLocaleTimeString('pt-BR');
-  } catch (e) {
-    document.getElementById('conteudo').innerHTML = '<p class="vazio">Não consegui carregar os dados (' + e.message + ').</p>';
-  }
-}
-carregar();
-setInterval(carregar, 60000);
-</script>
+<main class="quadro" id="quadro"></main>
+<script src="painel.js"></script>
 </body>
 </html>`;
 }
 
-module.exports = { paginaHtml };
+module.exports = { paginaHtml, arquivo };

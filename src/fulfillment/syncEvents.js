@@ -296,6 +296,7 @@ async function processTracking(trackingNumber, rawStatus, evento) {
       linkAjustado,
       atributoStatus,
       atributoSituacao,
+      prazoRetirada: (evento && evento.dtLimiteRetirada) || null,
     });
     return "updated";
   } catch (err) {
