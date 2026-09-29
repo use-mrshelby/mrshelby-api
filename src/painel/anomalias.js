@@ -21,6 +21,23 @@ const DIAS_SEM_INFO_NO_PAINEL = 30;
 // num caso de endereço; passado o prazo, devolve o objeto.
 const DIAS_ATE_DEVOLVER_ENDERECO = 10;
 
+// Situações que o painel reconhece. A chave é estável (o título muda sem
+// quebrar o filtro) e "acionavel" diz se a loja consegue mudar o resultado:
+// tentativa de entrega e retenção seguem sozinhas, não adianta a equipe
+// olhar — por isso entram desligadas no filtro.
+const SITUACOES = [
+  { chave: "endereco", titulo: "Endereço não localizado", cor: "#e5484d", acionavel: true },
+  { chave: "retirada_prazo", titulo: "Prazo de retirada acabando", cor: "#e5484d", acionavel: true },
+  { chave: "retirada", titulo: "Aguardando retirada", cor: "#3e63dd", acionavel: true },
+  { chave: "devolucao", titulo: "Voltando para a loja", cor: "#8e4ec6", acionavel: true },
+  { chave: "extraviado", titulo: "Extraviado ou avariado", cor: "#e5484d", acionavel: true },
+  { chave: "falha", titulo: "Entrega com falha", cor: "#e5484d", acionavel: true },
+  { chave: "tentativa", titulo: "Tentativa de entrega", cor: "#f5a524", acionavel: false },
+  { chave: "parado", titulo: "Parado na transportadora", cor: "#f5a524", acionavel: false },
+  { chave: "sem_novidade", titulo: "Sem novidade há dias", cor: "#f5a524", acionavel: false },
+  { chave: "sem_info", titulo: "Código não reconhecido", cor: "#6b7280", acionavel: false },
+];
+
 // Grupos do painel, em ordem de urgência.
 const GRUPOS = {
   urgente: { titulo: "Ação urgente", cor: "#c0392b" },
@@ -83,48 +100,54 @@ function classificar(registro) {
   if (registro.ignorar_ate && new Date(registro.ignorar_ate) > new Date()) {
     // Código sem retorno há muito tempo é envio velho: não ocupa o painel.
     if (diasSemToque !== null && diasSemToque > DIAS_SEM_INFO_NO_PAINEL) return null;
-    return { grupo: "sem_info", motivo: "Código não reconhecido pela transportadora" };
+    return { grupo: "sem_info", chave: "sem_info", motivo: "Código não reconhecido pela transportadora" };
   }
 
   if (status === "failure") {
     if (/remetente|devolucao|devolução|devolvido|prazo de retirada encerrado|recusado/.test(texto)) {
-      return { grupo: "devolucao", motivo: "Voltando para a loja" };
+      return { grupo: "devolucao", chave: "devolucao", motivo: "Voltando para a loja" };
     }
     // Registro antigo, sem o texto da transportadora: se o cliente já recebeu
     // o aviso de devolução, é devolução — não uma falha nova.
     if (!texto && registro.avisos_enviados && registro.avisos_enviados.devolucao) {
-      return { grupo: "devolucao", motivo: "Voltando para a loja" };
+      return { grupo: "devolucao", chave: "devolucao", motivo: "Voltando para a loja" };
     }
     // "NUMERO NAO LOCALIZADO" é o motorista que não achou o número na rua,
     // não objeto perdido. Registro antigo ainda pode chegar aqui como falha.
     if (ENDERECO.test(texto)) {
-      return { grupo: "urgente", motivo: "Endereço não localizado" };
+      return { grupo: "urgente", chave: "endereco", motivo: "Endereço não localizado" };
     }
     if (/extraviado|sinistro|avariado/.test(texto)) {
-      return { grupo: "urgente", motivo: "Objeto extraviado ou avariado" };
+      return { grupo: "urgente", chave: "extraviado", motivo: "Objeto extraviado ou avariado" };
     }
-    return { grupo: "urgente", motivo: "Entrega com falha" };
+    return { grupo: "urgente", chave: "falha", motivo: "Entrega com falha" };
   }
 
   if (status === "attempted_delivery") {
-    return { grupo: "urgente", motivo: ENDERECO.test(texto) ? "Endereço não localizado" : "Tentativa de entrega sem sucesso" };
+    const deEndereco = ENDERECO.test(texto);
+    return {
+      grupo: "urgente",
+      chave: deEndereco ? "endereco" : "tentativa",
+      motivo: deEndereco ? "Endereço não localizado" : "Tentativa de entrega sem sucesso",
+    };
   }
 
   if (status === "ready_for_pickup") {
     const limite = registro.avisos_enviados && registro.avisos_enviados.prazo_final;
     return {
       grupo: limite ? "urgente" : "acompanhar",
+      chave: limite ? "retirada_prazo" : "retirada",
       motivo: limite ? "Aguardando retirada, prazo acabando" : "Aguardando retirada na agência",
     };
   }
 
   // Em trânsito parado há muito tempo costuma ser objeto perdido no caminho.
   if (diasSemToque !== null && diasSemToque >= DIAS_PARADO_ALERTA) {
-    return { grupo: "acompanhar", motivo: `Sem novidade há ${diasSemToque} dias` };
+    return { grupo: "acompanhar", chave: "sem_novidade", motivo: `Sem novidade há ${diasSemToque} dias` };
   }
 
   if (/fiscal|retencao|retenção|atraso|imprevisto|travado/.test(texto)) {
-    return { grupo: "acompanhar", motivo: "Parado na transportadora" };
+    return { grupo: "acompanhar", chave: "parado", motivo: "Parado na transportadora" };
   }
 
   return null;
@@ -251,6 +274,7 @@ async function listarAnomalias() {
     const item = {
       codigo: p.codigo,
       grupo: p.grupo,
+      chave: p.chave,
       motivo: p.motivo,
       status: p.registro.last_status,
       texto_transportadora: p.registro.raw_status,
@@ -315,6 +339,7 @@ async function listarAnomalias() {
     total_acompanhados: Object.keys(registros).length,
     grupos: GRUPOS,
     etapas: ETAPAS,
+    situacoes: SITUACOES,
     itens,
   };
 }

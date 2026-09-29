@@ -16,7 +16,39 @@
     "Código não reconhecido pela transportadora": "#6b7280",
   };
 
-  var estado = { dados: null, arrastando: null, pausado: false };
+  var estado = { dados: null, arrastando: null, pausado: false, filtro: null };
+
+  var GUARDA = "painel-filtro";
+
+  /* O filtro escolhido fica no aparelho de quem usa. Se não der para gravar
+     (janela anônima, armazenamento bloqueado), o painel segue funcionando
+     com o padrão — por isso tudo aqui está dentro de try. */
+  function filtroGravado() {
+    try {
+      var bruto = localStorage.getItem(GUARDA);
+      return bruto ? JSON.parse(bruto) : null;
+    } catch (e) { return null; }
+  }
+
+  function gravarFiltro(lista) {
+    try { localStorage.setItem(GUARDA, JSON.stringify(lista)); } catch (e) {}
+  }
+
+  /* Padrão: só o que a loja consegue mudar. Tentativa de entrega e retenção
+     seguem sozinhas — ficam desligadas até alguém querer olhar. */
+  function filtroAtual() {
+    if (estado.filtro) return estado.filtro;
+    var gravado = filtroGravado();
+    estado.filtro = gravado || estado.dados.situacoes
+      .filter(function (s) { return s.acionavel; })
+      .map(function (s) { return s.chave; });
+    return estado.filtro;
+  }
+
+  function itensVisiveis() {
+    var ligadas = filtroAtual();
+    return estado.dados.itens.filter(function (i) { return ligadas.indexOf(i.chave) >= 0; });
+  }
 
   function esc(t) {
     return String(t == null ? "" : t)
@@ -134,11 +166,59 @@
 
   /* ── Quadro ────────────────────────────────────────────────────────── */
 
+  function desenharFiltro() {
+    var d = estado.dados;
+    var ligadas = filtroAtual();
+    var contagem = {};
+    d.itens.forEach(function (i) { contagem[i.chave] = (contagem[i.chave] || 0) + 1; });
+
+    // Só mostra situação que existe na fila agora — chip de contagem zero é ruído.
+    var chips = d.situacoes.filter(function (s) { return contagem[s.chave]; }).map(function (s) {
+      var ligada = ligadas.indexOf(s.chave) >= 0;
+      return '<button class="chip' + (ligada ? " ligada" : "") + '" data-chave="' + s.chave + '"'
+        + ' style="--cor:' + s.cor + '">'
+        + esc(s.titulo) + '<span class="chip-n">' + contagem[s.chave] + "</span></button>";
+    }).join("");
+
+    var todasLigadas = d.situacoes.every(function (s) {
+      return !contagem[s.chave] || ligadas.indexOf(s.chave) >= 0;
+    });
+
+    document.getElementById("filtro").innerHTML = chips
+      + '<button class="chip alterna" id="alterna">'
+      + (todasLigadas ? "Só o que depende de nós" : "Ver tudo") + "</button>";
+
+    document.querySelectorAll("#filtro .chip[data-chave]").forEach(function (b) {
+      b.addEventListener("click", function () { alternarChave(b.dataset.chave); });
+    });
+    document.getElementById("alterna").addEventListener("click", function () {
+      aplicarFiltro(todasLigadas
+        ? d.situacoes.filter(function (s) { return s.acionavel; }).map(function (s) { return s.chave; })
+        : d.situacoes.map(function (s) { return s.chave; }));
+    });
+  }
+
+  function aplicarFiltro(lista) {
+    estado.filtro = lista;
+    gravarFiltro(lista);
+    desenhar();
+  }
+
+  function alternarChave(chave) {
+    var atual = filtroAtual().slice();
+    var i = atual.indexOf(chave);
+    if (i >= 0) atual.splice(i, 1); else atual.push(chave);
+    aplicarFiltro(atual);
+  }
+
   function desenhar() {
     var d = estado.dados;
+    desenharFiltro();
+
+    var visiveis = itensVisiveis();
     var porEtapa = {};
     d.etapas.forEach(function (e) { porEtapa[e.id] = []; });
-    d.itens.forEach(function (i) { (porEtapa[i.etapa] || porEtapa[d.etapas[0].id]).push(i); });
+    visiveis.forEach(function (i) { (porEtapa[i.etapa] || porEtapa[d.etapas[0].id]).push(i); });
 
     document.getElementById("quadro").innerHTML = d.etapas.map(function (e) {
       var itens = porEtapa[e.id];
@@ -154,8 +234,11 @@
     }).join("");
 
     var urgentes = porEtapa[d.etapas[0].id].length;
+    var escondidos = d.itens.length - visiveis.length;
     document.getElementById("resumo").textContent =
-      d.itens.length + " casos abertos · " + d.total_acompanhados + " envios acompanhados";
+      visiveis.length + " casos abertos"
+      + (escondidos ? " · " + escondidos + " fora do filtro" : "")
+      + " · " + d.total_acompanhados + " envios acompanhados";
     document.getElementById("urgente").textContent = urgentes + " a tratar";
     document.getElementById("urgente").style.display = urgentes ? "" : "none";
     document.getElementById("atualizado").textContent =

@@ -36,6 +36,7 @@ function paginaHtml() {
     <span class="sub" id="atualizado"></span>
   </div>
 </header>
+<nav class="filtro" id="filtro"></nav>
 <main class="quadro" id="quadro"></main>
 <script src="painel.js"></script>
 </body>
