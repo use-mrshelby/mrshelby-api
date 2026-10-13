@@ -31,7 +31,7 @@ function tipoDoAviso(rawStatus, evento) {
   // incorreto". Em todos, o cliente resolve confirmando o endereço com a loja.
   // Vem antes de "tentativa" de propósito: o texto dos Correios traz "não
   // entregue" e cairia no e-mail de "não tinha ninguém em casa".
-  if (/endereco nao localizado|endereço não localizado|numero nao localizado|número não localizado|erro de endereco|erro de endereço|endereco incorreto|endereço incorreto|reitineracao|reitineração|contate seu fornecedor/.test(t)) return "endereco";
+  if (/endereco nao localizado|endereço não localizado|numero nao localizado|número não localizado|erro de endereco|erro de endereço|endereco incorreto|endereço incorreto|endereco insuficiente|endereço insuficiente|reitineracao|reitineração|contate seu fornecedor/.test(t)) return "endereco";
   if (/nao entregue|não entregue|carteiro nao atendido|carteiro não atendido|ausente/.test(t)) return "tentativa";
   return null;
 }

@@ -60,6 +60,7 @@ const GRUPOS = {
 // Todos os jeitos que Correios e Jadlog escrevem o mesmo problema: a entrega
 // não saiu porque o endereço não foi localizado ou precisa de confirmação.
 const ENDERECO = /endereco|endereço|reitineracao|numero nao localizado|contate seu fornecedor/;
+// (o /endereco/ acima já pega "ENDERECO INSUFICIENTE" e "ENDERECO NAO LOCALIZADO")
 
 /** Dias que faltam até uma data (0 = hoje ou já passou). */
 function diasAte(iso) {

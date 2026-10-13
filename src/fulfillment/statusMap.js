@@ -31,7 +31,8 @@ const STATUS_RULES = [
     keywords: [
       "nao entregue", "carteiro nao atendido", "tentativa", "ausente", "nao encontrado",
       "endereco nao localizado", "numero nao localizado", "erro de endereco",
-      "endereco incorreto", "reitineracao", "contate seu fornecedor",
+      "endereco incorreto", "endereco insuficiente", "reitineracao",
+      "contate seu fornecedor",
     ],
     shopify: "attempted_delivery",
   },
