@@ -35,6 +35,11 @@ function dataDoEvento(evento) {
   return isNaN(d) ? null : d.toISOString();
 }
 
+// Depois de quantos dias um evento da transportadora deixa de virar aviso ao
+// cliente. Protege contra uma enxurrada de mensagens atrasadas quando envios
+// esquecidos voltam para a fila.
+const DIAS_PARA_AVISAR = 7;
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -178,7 +183,23 @@ async function processTracking(trackingNumber, rawStatus, evento) {
   const precisaLimpar = shopifyStatus !== "delivered" && !record?.delivered_cleared;
   // Avisos ao cliente (retirada, prazo, tentativa, devolução). O lembrete de
   // prazo pode nascer sem o status mudar, então entra na conta de "tem trabalho".
-  const avisos = avisosPendentes({ rawStatus, evento, enviados: record?.avisos_enviados });
+  //
+  // Evento velho não vira mensagem. Um envio que ficou semanas fora da fila
+  // não pode, ao voltar, disparar hoje um aviso sobre algo que aconteceu há
+  // muito tempo — "confirme seu endereço" de um pacote que já foi devolvido
+  // confunde mais do que ajuda. O status é sincronizado do mesmo jeito.
+  const eventoEm = dataDoEvento(evento);
+  const eventoVelho =
+    !!eventoEm && Date.now() - new Date(eventoEm).getTime() > DIAS_PARA_AVISAR * 86400000;
+  const avisos = eventoVelho
+    ? []
+    : avisosPendentes({ rawStatus, evento, enviados: record?.avisos_enviados });
+  if (eventoVelho) {
+    logger.info("Evento antigo — status sincronizado sem avisar o cliente", {
+      trackingNumber,
+      eventoEm,
+    });
+  }
   // Em "aguardando retirada", o link do envio passa a apontar para a nossa
   // página (uma vez por remessa) — é o link que o Martz manda no WhatsApp.
   const precisaAjustarLink = shopifyStatus === "ready_for_pickup" && !record?.link_ajustado;
@@ -194,7 +215,6 @@ async function processTracking(trackingNumber, rawStatus, evento) {
   // O painel conta prazo pela data do evento da transportadora e pela data
   // limite de retirada. Quem está parado há dias nunca era reprocessado e
   // ficava sem esses dois dados — por isso eles também furam o "unchanged".
-  const eventoEm = dataDoEvento(evento);
   const prazoRetirada = (evento && evento.dtLimiteRetirada) || null;
   const precisaRegistrarPrazo =
     (eventoEm && record?.evento_em !== eventoEm) ||

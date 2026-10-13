@@ -9,7 +9,7 @@
 require("dotenv").config();
 const axios = require("axios");
 const shopify = require("../shopify/client");
-const { getTracking, patchTracking } = require("../db");
+const { getTracking, patchTracking, listarTrackings } = require("../db");
 const logger = require("../logger");
 
 const API_BASE = (process.env.MR_SHELBY_API_URL || "https://mrshelby-api.vercel.app").replace(/\/$/, "");
@@ -68,14 +68,43 @@ async function getJadlogStatus(trackingNumber) {
 }
 
 // ── Busca tracking numbers dos pedidos enviados na Shopify ────────────────────
+// Janela da consulta à Shopify. Atenção: o filtro é por pedido ATUALIZADO,
+// não criado — e o ciclo só atualiza o pedido quando o status muda. Envio
+// parado por semanas envelhece e cai da janela, por isso ela não pode ser a
+// única fonte (ver trackingsDoBanco).
+const DIAS_JANELA_SHOPIFY = 45;
+
+// Até quando um envio do nosso banco continua sendo consultado. Passado isso,
+// é código de envio abandonado e não vale mais gastar consulta.
+const DIAS_ACOMPANHANDO_DO_BANCO = 60;
+
+/**
+ * Tudo que o nosso banco ainda tem como não entregue.
+ *
+ * Existe porque a consulta da Shopify sozinha esquece envio parado: ela filtra
+ * por pedido atualizado, e quando o status não muda o ciclo não escreve nada na
+ * Shopify. A data envelhece, o envio sai da janela e nunca mais volta — o
+ * pacote é entregue e o sistema não fica sabendo. Foi o que aconteceu com 142
+ * envios da Jadlog em outubro de 2026.
+ */
+function trackingsDoBanco() {
+  const limite = Date.now() - DIAS_ACOMPANHANDO_DO_BANCO * 86400000;
+  return Object.entries(listarTrackings())
+    .filter(([, registro]) => {
+      if (registro.last_status === "delivered") return false;
+      const visto = registro.updated_at || registro.status_desde;
+      return visto ? new Date(visto).getTime() >= limite : false;
+    })
+    .map(([codigo]) => codigo);
+}
+
 async function getActiveTrackingsFromShopify() {
   const trackings = new Set();
   let pageInfo = null;
 
   do {
     // Quando page_info está presente não pode misturar outros filtros (regra Shopify)
-    // Filtra apenas pedidos dos últimos 60 dias para evitar rastreios expirados
-    const since = new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString();
+    const since = new Date(Date.now() - DIAS_JANELA_SHOPIFY * 86400000).toISOString();
     const params = pageInfo
       ? { page_info: pageInfo, limit: 50 }
       : { status: "any", fulfillment_status: "shipped", updated_at_min: since, limit: 50 };
@@ -107,8 +136,14 @@ async function getActiveTrackings() {
   let trackingNumbers;
 
   try {
-    trackingNumbers = await getActiveTrackingsFromShopify();
-    logger.info(`mrShelby: ${trackingNumbers.length} tracking(s) ativos encontrados na Shopify`);
+    const daShopify = await getActiveTrackingsFromShopify();
+    const doBanco = trackingsDoBanco();
+    trackingNumbers = [...new Set([...daShopify, ...doBanco])];
+    logger.info("mrShelby: fila do ciclo montada", {
+      daShopify: daShopify.length,
+      doBanco: doBanco.length,
+      total: trackingNumbers.length,
+    });
   } catch (err) {
     logger.error("mrShelby: falha ao buscar trackings da Shopify", { error: err.message });
     return [];
