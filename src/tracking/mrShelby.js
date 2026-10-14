@@ -68,6 +68,24 @@ async function getJadlogStatus(trackingNumber) {
 }
 
 // ── Busca tracking numbers dos pedidos enviados na Shopify ────────────────────
+/**
+ * Pedido do TikTok a loja despacha, mas quem fala com o cliente é o TikTok —
+ * então ele fica fora do nosso acompanhamento: sem consulta à transportadora,
+ * sem evento na Shopify, sem e-mail e fora do painel.
+ *
+ * A origem do pedido é a regra que vale. O prefixo do código é só rede de
+ * segurança para registro antigo, que já não aparece na janela da Shopify e
+ * portanto nunca seria marcado: todo código 999882 conferido era do TikTok, e
+ * nenhum pedido de outra origem usou esse formato.
+ */
+function ehDoTikTok(origem) {
+  return /tiktok/i.test(String(origem || ""));
+}
+
+function codigoDoTikTok(codigo) {
+  return /^999882\d{9}$/.test(String(codigo || "").trim());
+}
+
 // Janela da consulta à Shopify. Atenção: o filtro é por pedido ATUALIZADO,
 // não criado — e o ciclo só atualiza o pedido quando o status muda. Envio
 // parado por semanas envelhece e cai da janela, por isso ela não pode ser a
@@ -90,8 +108,9 @@ const DIAS_ACOMPANHANDO_DO_BANCO = 60;
 function trackingsDoBanco() {
   const limite = Date.now() - DIAS_ACOMPANHANDO_DO_BANCO * 86400000;
   return Object.entries(listarTrackings())
-    .filter(([, registro]) => {
+    .filter(([codigo, registro]) => {
       if (registro.last_status === "delivered") return false;
+      if (registro.fora_do_acompanhamento || codigoDoTikTok(codigo)) return false;
       // Código trocado no envio da Shopify (pedido refeito): não é mais acompanhado.
       if (registro.substituido_em) return false;
       const visto = registro.updated_at || registro.status_desde;
@@ -116,13 +135,25 @@ async function getActiveTrackingsFromShopify() {
     const linkHeader = response.headers["link"] ?? "";
 
     for (const order of orders) {
+      const doTikTok = ehDoTikTok(order.source_name);
       for (const fulfillment of order.fulfillments ?? []) {
+        const codigo = (fulfillment.tracking_number || "").trim();
+        if (!codigo) continue;
+
+        // Pedido do TikTok: marca no banco e sai da fila. A marca é o que faz
+        // o painel e o ciclo pararem de olhar para ele depois.
+        if (doTikTok) {
+          const registro = getTracking(codigo);
+          if (registro && registro.fora_do_acompanhamento !== "tiktok") {
+            patchTracking(codigo, { fora_do_acompanhamento: "tiktok" });
+          }
+          continue;
+        }
+
         // Remessa já entregue não muda mais: não precisa consultar a
         // transportadora nem a Shopify a cada ciclo.
         if (fulfillment.shipment_status === "delivered") continue;
-        if (fulfillment.tracking_number) {
-          trackings.add(fulfillment.tracking_number.trim());
-        }
+        trackings.add(codigo);
       }
     }
 
