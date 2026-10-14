@@ -203,23 +203,31 @@ async function getActiveTrackings() {
   return results;
 }
 
-// Depois de TENTATIVAS_ANTES_DE_IGNORAR falhas seguidas, o código fica de fora
-// por DIAS_IGNORANDO — evita dezenas de consultas inúteis por rodada. Se ele
-// voltar a responder um dia, o contador zera e ele volta para a fila.
-const TENTATIVAS_ANTES_DE_IGNORAR = 3;
-const DIAS_IGNORANDO = 30;
+// Código que não responde sai da fila por um tempo, para não gastar dezenas de
+// consultas inúteis por rodada. A pausa CRESCE a cada rodada de falhas em vez
+// de ir direto para o teto.
+//
+// Antes eram 3 falhas e 30 dias fora. Como o ciclo roda de 15 em 15 minutos,
+// isso dava 45 minutos: etiqueta recém-criada ainda não tem evento nenhum nos
+// Correios, então todo envio novo era descartado na primeira hora de vida e só
+// voltava a ser consultado um mês depois — entregue, sem ninguém saber.
+const TENTATIVAS_ANTES_DE_PAUSAR = 3;
+const HORAS_DE_PAUSA = [6, 24, 72, 168];
 
 function registrarConsultaSemRetorno(trackingNumber, carrier, registro, motivo) {
   const falhas = (registro?.consultas_sem_retorno ?? 0) + 1;
   const campos = { consultas_sem_retorno: falhas };
 
-  if (falhas >= TENTATIVAS_ANTES_DE_IGNORAR) {
-    campos.ignorar_ate = new Date(Date.now() + DIAS_IGNORANDO * 86400000).toISOString();
-    logger.warn("mrShelby: código sem retorno — saindo da fila por 30 dias", {
+  if (falhas % TENTATIVAS_ANTES_DE_PAUSAR === 0) {
+    const nivel = Math.min(falhas / TENTATIVAS_ANTES_DE_PAUSAR - 1, HORAS_DE_PAUSA.length - 1);
+    const horas = HORAS_DE_PAUSA[nivel];
+    campos.ignorar_ate = new Date(Date.now() + horas * 3600000).toISOString();
+    logger.warn("mrShelby: código sem retorno — pausando a consulta", {
       trackingNumber,
       carrier,
       motivo,
       falhas,
+      horasDePausa: horas,
     });
   } else {
     logger.warn("mrShelby: falha ao consultar transportadora", { trackingNumber, carrier, motivo, falhas });
@@ -228,4 +236,24 @@ function registrarConsultaSemRetorno(trackingNumber, carrier, registro, motivo) 
   patchTracking(trackingNumber, campos);
 }
 
-module.exports = { getActiveTrackings };
+/**
+ * Devolve à fila o que a regra antiga tinha mandado embora por 30 dias.
+ * Idempotente: só encurta pausa maior que o teto novo, então rodar de novo
+ * num próximo deploy não faz nada.
+ */
+function devolverPausasLongas() {
+  const teto = Date.now() + HORAS_DE_PAUSA[HORAS_DE_PAUSA.length - 1] * 3600000;
+  let devolvidos = 0;
+
+  for (const [codigo, registro] of Object.entries(listarTrackings())) {
+    if (!registro.ignorar_ate) continue;
+    if (new Date(registro.ignorar_ate).getTime() <= teto) continue;
+    patchTracking(codigo, { ignorar_ate: null, consultas_sem_retorno: 0 });
+    devolvidos++;
+  }
+
+  if (devolvidos) logger.info("mrShelby: códigos devolvidos à fila", { devolvidos });
+  return devolvidos;
+}
+
+module.exports = { getActiveTrackings, devolverPausasLongas };

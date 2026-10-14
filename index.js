@@ -11,6 +11,14 @@ if (missing.length) {
 
 logger.info("Shopify AI Toolkit starting");
 
+// Devolve à fila os códigos que a regra antiga de pausa tinha mandado embora
+// por 30 dias. É idempotente — só encurta pausa maior que o teto atual.
+try {
+  require("./src/tracking/mrShelby").devolverPausasLongas();
+} catch (err) {
+  logger.error("Falha ao devolver códigos pausados à fila", { error: err.message });
+}
+
 // AMOSTRAS_PARA=email@exemplo.com faz o serviço enviar, no startup, um exemplo
 // de cada aviso ao cliente (dados fictícios). Serve para revisar texto e
 // layout; depois é só apagar a variável.
