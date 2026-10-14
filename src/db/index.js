@@ -14,6 +14,11 @@ const path = require("path");
 
 const DB_PATH = path.resolve(process.env.DB_PATH || "./data/tracking.json");
 
+// Sinais de vida do ciclo, num arquivo à parte. Fora do mapa de trackings de
+// propósito: lá dentro toda chave é um código de rastreio, e uma chave
+// especial viraria um envio fantasma no painel.
+const SAUDE_PATH = path.join(path.dirname(DB_PATH), "saude.json");
+
 function _load() {
   const dir = path.dirname(DB_PATH);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -23,6 +28,23 @@ function _load() {
 
 function _save(data) {
   fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2), "utf8");
+}
+
+function lerSaude() {
+  try {
+    if (!fs.existsSync(SAUDE_PATH)) return {};
+    return JSON.parse(fs.readFileSync(SAUDE_PATH, "utf8"));
+  } catch (err) {
+    // Arquivo corrompido não pode derrubar o painel nem o ciclo.
+    return {};
+  }
+}
+
+function gravarSaude(campos) {
+  const dir = path.dirname(SAUDE_PATH);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  const atual = lerSaude();
+  fs.writeFileSync(SAUDE_PATH, JSON.stringify({ ...atual, ...campos }, null, 2), "utf8");
 }
 
 function getTracking(trackingNumber) {
@@ -91,4 +113,4 @@ function patchTracking(trackingNumber, campos) {
   _save(data);
 }
 
-module.exports = { getTracking, listarTrackings, upsertTracking, patchTracking };
+module.exports = { getTracking, listarTrackings, upsertTracking, patchTracking, lerSaude, gravarSaude };

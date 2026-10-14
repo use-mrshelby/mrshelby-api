@@ -85,6 +85,38 @@ h1 {
   background: var(--urgente);
 }
 
+/* ── Saúde do rastreio ─────────────────────────────────────────────────── */
+
+.saude {
+  margin: 14px 20px 0;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-left: 3px solid #30a46c;
+  border-radius: 10px;
+  background: var(--surface);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 22px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.saude b { font-weight: 600; color: var(--muted); }
+.saude-item { white-space: nowrap; }
+
+.saude.alerta {
+  border-left-color: var(--urgente);
+  background: color-mix(in srgb, var(--urgente) 6%, var(--surface));
+}
+
+.saude-alertas {
+  flex-basis: 100%;
+  margin-top: 4px;
+  color: var(--urgente);
+  font-weight: 600;
+  white-space: normal;
+}
+
 /* ── Filtro por situação ───────────────────────────────────────────────── */
 
 .filtro {
@@ -358,6 +390,7 @@ details.historico pre {
 
 @media (max-width: 760px) {
   header { padding: 12px 14px; }
+  .saude { margin: 12px 14px 0; gap: 4px 14px; }
   .filtro { padding: 12px 14px 0; }
   .quadro { padding: 14px; grid-auto-columns: 86vw; gap: 12px; }
   .coluna { max-height: none; }

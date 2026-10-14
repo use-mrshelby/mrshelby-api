@@ -14,6 +14,7 @@ require("dotenv").config();
 const cron = require("node-cron");
 const { syncFulfillmentEvents } = require("../fulfillment/syncEvents");
 const { createMissingCorreiosLogFulfillments } = require("../fulfillment/createFulfillments");
+const { gravarSaude } = require("../db");
 const logger = require("../logger");
 
 const POLL_CRON = process.env.POLL_CRON || "0 */3 * * *";
@@ -28,6 +29,8 @@ async function runCycle(trigger) {
     return;
   }
   cicloEmAndamento = true;
+  const comecou = Date.now();
+  let falhou = null;
   logger.info(`Fulfillment cycle start (${trigger})`);
 
   try {
@@ -42,11 +45,26 @@ async function runCycle(trigger) {
     try {
       await syncFulfillmentEvents();
     } catch (err) {
+      falhou = err.message;
       logger.error("Sync error", { error: err.message, trigger });
     }
   } finally {
     // finally: mesmo com erro inesperado, a trava não pode ficar presa.
     cicloEmAndamento = false;
+  }
+
+  // Deixa registrado que o ciclo chegou ao fim. É esse carimbo que o painel
+  // usa para dizer "o rastreio parou" — sem ele, um ciclo travado some sem
+  // ninguém perceber, que foi o que aconteceu em outubro de 2026.
+  try {
+    gravarSaude({
+      ultimo_ciclo: new Date().toISOString(),
+      duracao_s: Math.round((Date.now() - comecou) / 1000),
+      disparo: trigger,
+      erro: falhou,
+    });
+  } catch (err) {
+    logger.warn("Não consegui registrar a saúde do ciclo", { error: err.message });
   }
 
   logger.info(`Fulfillment cycle done (${trigger})`);

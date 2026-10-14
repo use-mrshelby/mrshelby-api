@@ -6,7 +6,7 @@
  * sozinho e não faz sentido consultar a loja a cada atualização de tela.
  */
 
-const { listarTrackings } = require("../db");
+const { listarTrackings, lerSaude } = require("../db");
 const shopify = require("../shopify/client");
 const logger = require("../logger");
 const { ETAPAS, etapaDe, adiado, resolvidoEEscondido, historicoDe } = require("./tratativa");
@@ -246,6 +246,64 @@ function linkWhatsapp(telefone, mensagem) {
   return `https://api.whatsapp.com/send/?phone=${numero}&text=${encodeURIComponent(mensagem)}&type=phone_number&app_absent=0`;
 }
 
+// Quanto tempo sem concluir um ciclo, ou sem reconhecer uma entrega, antes de
+// acender o alerta. Duas vezes o intervalo do ciclo e meio dia de entregas:
+// em dia útil, nenhuma entrega por meio dia é sinal de que algo travou.
+const MINUTOS_SEM_CICLO_ALERTA = 45;
+const HORAS_SEM_ENTREGA_ALERTA = 12;
+
+/**
+ * Sinais de que o rastreio está vivo.
+ *
+ * Existe porque os dois defeitos de outubro de 2026 — a janela de 20 dias e a
+ * pausa de 30 dias — passaram dias sem ninguém notar: o sistema parava de
+ * enxergar envio e não tinha como dizer isso. Aqui ele diz.
+ */
+function saudeDoRastreio(registros) {
+  const agora = Date.now();
+  const saude = lerSaude();
+  const valores = Object.values(registros);
+
+  const pausados = valores.filter(
+    (r) => r.ignorar_ate && new Date(r.ignorar_ate).getTime() > agora
+  ).length;
+
+  // A última vez que o ciclo viu uma entrega nova. status_desde é quando o
+  // status mudou, então num registro entregue ele é a hora do reconhecimento.
+  const entregas = valores
+    .filter((r) => r.last_status === "delivered" && r.status_desde)
+    .map((r) => new Date(r.status_desde).getTime())
+    .filter((t) => !isNaN(t));
+  const ultimaEntrega = entregas.length ? Math.max(...entregas) : null;
+
+  const minutosSemCiclo = saude.ultimo_ciclo
+    ? Math.round((agora - new Date(saude.ultimo_ciclo).getTime()) / 60000)
+    : null;
+  const horasSemEntrega = ultimaEntrega ? (agora - ultimaEntrega) / 3600000 : null;
+
+  const alertas = [];
+  if (minutosSemCiclo === null) {
+    alertas.push("O ciclo ainda não registrou nenhuma rodada.");
+  } else if (minutosSemCiclo > MINUTOS_SEM_CICLO_ALERTA) {
+    alertas.push(`O ciclo não roda há ${minutosSemCiclo} minutos.`);
+  }
+  if (saude.erro) alertas.push(`A última rodada terminou com erro: ${saude.erro}`);
+  if (horasSemEntrega !== null && horasSemEntrega > HORAS_SEM_ENTREGA_ALERTA) {
+    alertas.push(`Nenhuma entrega reconhecida há ${Math.round(horasSemEntrega)} horas.`);
+  }
+
+  return {
+    ultimo_ciclo: saude.ultimo_ciclo || null,
+    minutos_sem_ciclo: minutosSemCiclo,
+    duracao_s: saude.duracao_s ?? null,
+    ultima_entrega: ultimaEntrega ? new Date(ultimaEntrega).toISOString() : null,
+    horas_sem_entrega: horasSemEntrega === null ? null : Math.round(horasSemEntrega * 10) / 10,
+    pausados,
+    acompanhados: valores.filter((r) => r.last_status !== "delivered").length,
+    alertas,
+  };
+}
+
 async function dadosDoPedido(orderId) {
   if (!orderId) return {};
   const cache = cachePedidos.get(orderId);
@@ -369,6 +427,7 @@ async function listarAnomalias() {
     grupos: GRUPOS,
     etapas: ETAPAS,
     situacoes: SITUACOES,
+    saude: saudeDoRastreio(registros),
     itens,
   };
 }

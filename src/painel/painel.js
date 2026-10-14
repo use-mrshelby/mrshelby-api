@@ -222,8 +222,46 @@
     aplicarFiltro(atual);
   }
 
+  /* ── Saúde do rastreio ─────────────────────────────────────────────── */
+
+  function desenharSaude() {
+    var s = estado.dados.saude;
+    if (!s) return;
+
+    var tempoCiclo = s.minutos_sem_ciclo === null
+      ? "nunca rodou"
+      : s.minutos_sem_ciclo < 1 ? "agora mesmo"
+      : s.minutos_sem_ciclo < 60 ? "há " + s.minutos_sem_ciclo + " min"
+      : "há " + Math.round(s.minutos_sem_ciclo / 60) + "h";
+
+    var tempoEntrega = s.horas_sem_entrega === null
+      ? "nenhuma ainda"
+      : s.horas_sem_entrega < 1 ? "há menos de 1h"
+      : s.horas_sem_entrega < 24 ? "há " + Math.round(s.horas_sem_entrega) + "h"
+      : "há " + Math.round(s.horas_sem_entrega / 24) + " dias";
+
+    var itens = [
+      { rotulo: "Última rodada", valor: tempoCiclo },
+      { rotulo: "Última entrega vista", valor: tempoEntrega },
+      { rotulo: "Em acompanhamento", valor: s.acompanhados },
+      { rotulo: "Sem resposta da transportadora", valor: s.pausados },
+    ];
+
+    var html = '<div class="saude' + (s.alertas.length ? " alerta" : "") + '">'
+      + itens.map(function (i) {
+        return '<span class="saude-item"><b>' + esc(i.rotulo) + ":</b> " + esc(i.valor) + "</span>";
+      }).join("");
+
+    if (s.alertas.length) {
+      html += '<div class="saude-alertas">⚠ ' + s.alertas.map(esc).join(" · ") + "</div>";
+    }
+
+    document.getElementById("saude").innerHTML = html + "</div>";
+  }
+
   function desenhar() {
     var d = estado.dados;
+    desenharSaude();
     desenharFiltro();
 
     var visiveis = itensVisiveis();
