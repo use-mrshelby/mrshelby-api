@@ -69,6 +69,9 @@ function upsertTracking({ trackingNumber, lastStatus, rawStatus, orderId, fulfil
     // status_desde, que é quando o nosso sistema viu a mudança: se a gente
     // corrige um mapeamento, status_desde reinicia e o prazo do painel mente.
     evento_em: eventoEm ?? existing.evento_em ?? null,
+    // "tiktok" = a loja despacha, mas quem fala com o cliente é o canal.
+    // Fica fora da fila e do painel.
+    fora_do_acompanhamento: existing.fora_do_acompanhamento ?? null,
     updated_at: new Date().toISOString(),
   };
   _save(data);

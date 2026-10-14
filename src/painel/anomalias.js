@@ -108,6 +108,8 @@ function classificar(registro) {
   const diasSemToque = diasParado ?? diasDesde(registro.updated_at);
 
   if (status === "delivered") return null;
+  // Pedido do TikTok: a comunicação com o cliente é do canal, não nossa.
+  if (registro.fora_do_acompanhamento) return null;
 
   if (registro.ignorar_ate && new Date(registro.ignorar_ate) > new Date()) {
     // Código sem retorno há muito tempo é envio velho: não ocupa o painel.
