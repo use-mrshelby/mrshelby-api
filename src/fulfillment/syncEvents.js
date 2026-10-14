@@ -9,7 +9,7 @@
  */
 
 const { getActiveTrackings } = require("../tracking/mrShelby");
-const { getTracking, upsertTracking } = require("../db");
+const { getTracking, upsertTracking, patchTracking } = require("../db");
 const { toShopifyStatus, mensagemPainel } = require("./statusMap");
 const {
   findFulfillmentByTracking,
@@ -230,6 +230,24 @@ async function processTracking(trackingNumber, rawStatus, evento) {
     let orderId = record?.shopify_order_id ?? null;
     let fulfillmentId = record?.shopify_fulfillment_id ?? null;
 
+    // Código trocado no envio: quando o pedido é refeito (falta de produto na
+    // separação), o rastreio do envio na Shopify passa a ser o do pedido novo.
+    // O registro do código antigo continua apontando para o MESMO envio — sem
+    // esta conferência, um evento do código antigo seria gravado no pedido e
+    // dispararia WhatsApp/e-mail errados. Só confere quando há algo a escrever.
+    if (orderId) {
+      const atual = await getFulfillmentId(orderId, trackingNumber);
+      if (!atual) {
+        patchTracking(trackingNumber, { substituido_em: new Date().toISOString() });
+        logger.warn("Código não está mais no envio da Shopify (substituído) — fora da fila", {
+          trackingNumber,
+          orderId,
+        });
+        return "skip";
+      }
+      fulfillmentId = atual;
+    }
+
     if (!orderId) {
       const found = await findFulfillmentByTracking(trackingNumber);
       if (!found) {
@@ -238,15 +256,6 @@ async function processTracking(trackingNumber, rawStatus, evento) {
       }
       orderId = found.orderId;
       fulfillmentId = found.fulfillmentId;
-    } else if (!fulfillmentId) {
-      fulfillmentId = await getFulfillmentId(orderId, trackingNumber);
-      if (!fulfillmentId) {
-        logger.error("Fulfillment not found for cached order — cannot create event", {
-          trackingNumber,
-          orderId,
-        });
-        return "skip";
-      }
     }
 
     // A transportadora não diz "entregue": qualquer evento "delivered" anterior

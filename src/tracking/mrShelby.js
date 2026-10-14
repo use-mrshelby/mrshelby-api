@@ -92,6 +92,8 @@ function trackingsDoBanco() {
   return Object.entries(listarTrackings())
     .filter(([, registro]) => {
       if (registro.last_status === "delivered") return false;
+      // Código trocado no envio da Shopify (pedido refeito): não é mais acompanhado.
+      if (registro.substituido_em) return false;
       const visto = registro.updated_at || registro.status_desde;
       return visto ? new Date(visto).getTime() >= limite : false;
     })
