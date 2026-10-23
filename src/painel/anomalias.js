@@ -74,6 +74,23 @@ function diasDesde(iso) {
   return Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
 }
 
+/**
+ * Há quantos dias o envio não recebe notícia da transportadora.
+ *
+ * Conta pela data do evento dela, não pelo status_desde. status_desde é
+ * quando o NOSSO ciclo viu o texto mudar — e os Correios repetem a mesma
+ * frase ("Objeto em transferência - por favor aguarde") em cada unidade por
+ * onde o objeto passa. Pelo texto, um pacote que atravessa o país andando
+ * normalmente parece congelado desde a primeira transferência.
+ */
+function diasSemNoticia(registro) {
+  return (
+    diasDesde(registro.evento_em) ??
+    diasDesde(registro.status_desde) ??
+    diasDesde(registro.updated_at)
+  );
+}
+
 // O que já foi comunicado ao cliente, para o operador não repetir contato.
 const ROTULO_AVISO = {
   retirada: "E-mail: pedido aguardando retirada",
@@ -103,9 +120,7 @@ function historicoDeContato(registro) {
 function classificar(registro) {
   const status = registro.last_status;
   const texto = String(registro.raw_status || "").toLowerCase();
-  const diasParado = diasDesde(registro.status_desde);
-  // Registro antigo, de antes do painel: usa a data da última atualização.
-  const diasSemToque = diasParado ?? diasDesde(registro.updated_at);
+  const diasSemToque = diasSemNoticia(registro);
 
   if (status === "delivered") return null;
   // Pedido do TikTok: a comunicação com o cliente é do canal, não nossa.
@@ -368,13 +383,7 @@ async function listarAnomalias() {
       etapa: etapaDe(p.registro),
       tratativa: historicoDe(p.registro).slice(-5),
       lembrar_ate: (p.registro.tratativa && p.registro.tratativa.lembrar_ate) || null,
-      // Conta pela data que a transportadora registrou. status_desde é quando
-      // o nosso ciclo viu a mudança: se corrigimos um mapeamento, ele
-      // reinicia e o prazo passa a mentir para mais.
-      dias_parado:
-        diasDesde(p.registro.evento_em) ??
-        diasDesde(p.registro.status_desde) ??
-        diasDesde(p.registro.updated_at),
+      dias_parado: diasSemNoticia(p.registro),
       transportadora: /^[A-Z]{2}\d{9}[A-Z]{2}$/i.test(p.codigo) ? "Correios" : "Jadlog",
       rastreio_url: `https://www.mrshelby.com.br/pages/rastreio?tracking=${encodeURIComponent(p.codigo)}`,
       ...dados,
