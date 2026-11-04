@@ -226,7 +226,7 @@ function mensagemWhatsapp({ grupo, motivo, cliente, pedido, codigo, transportado
       prazoEmTexto(dias_ate_devolver) +
       " Pode confirmar por aqui o endereço completo, com número, complemento, CEP e um ponto de referência? Assim reenviamos a entrega.",
     "Tentativa de entrega sem sucesso":
-      "A transportadora passou no seu endereço e não encontrou ninguém para receber. Qual o melhor dia e horário para a nova tentativa? Precisa ter alguém no local em horário comercial.",
+      "A transportadora passou no seu endereço e não encontrou ninguém para receber. Uma nova tentativa será feita nos próximos dias úteis, então é preciso ter alguém no local em horário comercial para receber.",
     "Voltando para a loja":
       "A entrega não foi concluída e o seu pedido está voltando para a Mr. Shelby. Assim que ele chegar aqui podemos reenviar para o mesmo endereço, para outro endereço, ou fazer o estorno — o que você preferir?",
 
