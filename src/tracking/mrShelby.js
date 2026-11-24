@@ -25,6 +25,32 @@ function getCarrier(trackingNumber) {
   return "jadlog";
 }
 
+/**
+ * "Favor desconsiderar a informação anterior" (código EST): os Correios estão
+ * cancelando o evento imediatamente anterior. Acontece quando uma devolução é
+ * desfeita e o objeto volta para entrega.
+ *
+ * Sem isso, o ciclo lia o evento cancelado como se valesse: em 16/11/2026 o
+ * pedido MS16850 foi marcado como devolução por causa de um "entregue ao
+ * remetente" que os Correios cancelaram no mesmo minuto — e o cliente recebeu
+ * o aviso de que o pedido estava voltando para a loja. Ele acabou recebendo.
+ *
+ * A lista vem do mais novo para o mais antigo, então o evento cancelado é o
+ * de índice seguinte ao aviso.
+ */
+function semCancelados(eventos) {
+  const fora = new Set();
+  eventos.forEach((ev, i) => {
+    const aviso =
+      ev.codigo === "EST" || /desconsiderar a informa/i.test(ev.descricao || "");
+    if (aviso) {
+      fora.add(i);
+      fora.add(i + 1);
+    }
+  });
+  return eventos.filter((ev, i) => !fora.has(i));
+}
+
 // ── Correios ──────────────────────────────────────────────────────────────────
 async function getCorreiosStatus(trackingNumber) {
   const response = await axios.post(
@@ -32,8 +58,8 @@ async function getCorreiosStatus(trackingNumber) {
     { codigo: trackingNumber },
     { timeout: 15000 }
   );
-  const eventos = response.data?.eventos;
-  if (!eventos?.length) return null;
+  const eventos = semCancelados(response.data?.eventos ?? []);
+  if (!eventos.length) return null;
   // O evento mais recente vai junto: os avisos ao cliente usam o endereço da
   // agência, o prazo de retirada e o detalhe escrito pelos Correios.
   return { status: eventos[0].descricao ?? null, evento: eventos[0] };
@@ -47,8 +73,8 @@ async function getMelhorEnvioStatus(trackingNumber) {
     { codigo: trackingNumber },
     { timeout: 15000 }
   );
-  const eventos = response.data?.eventos;
-  if (!eventos?.length) return null;
+  const eventos = semCancelados(response.data?.eventos ?? []);
+  if (!eventos.length) return null;
   return { status: eventos[0].descricao ?? null, evento: eventos[0] };
 }
 
